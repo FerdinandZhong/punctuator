@@ -12,10 +12,9 @@ ner_mapping = {
     "!": "E"
 }
 
-def generate_training_data_from_csv(csv_path, target_col, output_file_path):
+def cleanup_data_from_csv(csv_path, target_col, output_file_path):
     dataframe = pd.read_csv(csv_path)
-    print(dataframe.head())
-    additional_to_remove = ["—", "..."]
+    additional_to_remove = ["—"]
     kept_punctuations = set(ner_mapping.keys())
     result_df = dataframe_data_cleaning(
         dataframe[:1500],
@@ -24,7 +23,6 @@ def generate_training_data_from_csv(csv_path, target_col, output_file_path):
         additional_to_remove,
         remove_brackets_text,
     )
-    print(result_df.head())
     with open(output_file_path, "w+") as output_file:
         for row in result_df[target_col].tolist():
             output_file.write("%s. \n" % row)
@@ -75,7 +73,7 @@ def generate_training_data(cleaned_data_path, training_data_path):
 
 
 if __name__ == "__main__":
-    generate_training_data_from_csv(
+    cleanup_data_from_csv(
         "./training_data/transcripts.csv",
         "transcript",
         "./training_data/cleaned_text.txt",
