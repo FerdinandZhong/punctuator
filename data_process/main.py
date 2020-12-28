@@ -69,7 +69,7 @@ def generate_training_data(cleaned_data_path, training_data_path):
         for line in pbar:
             words, tokens = process_line(line)
             for word, token in zip(words, tokens):
-                training_data_file.write("%s   %s\n" % (word, token))
+                training_data_file.write("%s\t%s\n" % (word, token))
 
 
 if __name__ == "__main__":
@@ -78,4 +78,4 @@ if __name__ == "__main__":
         "transcript",
         "./training_data/cleaned_text.txt",
     )
-    generate_training_data("./training_data/cleaned_text.txt", "./training_data/training.txt")
+    generate_training_data("./training_data/cleaned_text.txt", "./training_data/all_token_tag_data.txt")
