@@ -6,6 +6,8 @@ from sklearn.model_selection import train_test_split
 def split_dataset(token_docs, tag_docs, split_rate=0.2):
     train_texts, val_texts, train_tags, val_tags = train_test_split(token_docs, tag_docs, test_size=.2)
 
+    return train_texts, val_texts, train_tags, val_tags
+
 def read_data(file_path):
     def read_line(text_line):
         return text_line.strip().split("\t")
