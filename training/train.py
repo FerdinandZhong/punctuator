@@ -5,19 +5,9 @@ from typing import Optional
 
 import transformers
 from transformers import (
-    AutoConfig,
-    AutoModelForTokenClassification,
-    AutoTokenizer,
-    DataCollatorForTokenClassification,
-    HfArgumentParser,
-    PreTrainedTokenizerFast,
-    Trainer,
-    TrainingArguments,
-    set_seed
+    DistilBertTokenizerFast,
+    DistilBertForTokenClassification
 )
-
-from transformers.trainer_utils import is_main_process
-from seqeval.metrics import accuracy_score, f1_score, precision_score, recall_score
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +27,9 @@ class ModelArguments:
     tokenizer_name: Optional[str] = field(
         default=None, metadata={"help": "Pretrained tokenizer name or path if not the same as model_name"}
     )
-    cache_dir: Optional[str] = field(
-        default=None,
-        metadata={"help": "Where do you want to store the pretrained models downloaded from huggingface.co"},
-    )
+
+
+class TrainingPipeline():
+
+    def __init__(self):
+        pass

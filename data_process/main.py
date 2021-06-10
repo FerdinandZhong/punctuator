@@ -5,17 +5,19 @@ from data_process.data_cleanning import (
     remove_brackets_text,
 )
 
-ner_mapping = {
+NER_MAPPING = {
     ",": "C",
     ".": "P",
     "?": "Q",
     "!": "E"
 }
+DIGIT_MASK = "<num>"
+
 
 def cleanup_data_from_csv(csv_path, target_col, output_file_path):
     dataframe = pd.read_csv(csv_path)
     additional_to_remove = ["—"]
-    kept_punctuations = set(ner_mapping.keys())
+    kept_punctuations = set(NER_MAPPING.keys())
     result_df = dataframe_data_cleaning(
         dataframe[:1500],
         target_col,
@@ -31,17 +33,18 @@ def process_line(line):
     text_list = line.split()
     word_list = []
     token_list = []
+    # clean up puncs in the beginning of the text
     latest_word = text_list.pop(0)
-    while latest_word in ner_mapping:
+    while latest_word in NER_MAPPING:
         if not text_list:
             break
         latest_word = text_list.pop(0)
     latest_token = "O"
     latest_is_punc = False
     for word in text_list:
-        if word in ner_mapping:
+        if word in NER_MAPPING:
             if not latest_is_punc:
-                latest_token = ner_mapping[word]
+                latest_token = NER_MAPPING[word]
                 latest_is_punc = True
                 word_list.append(latest_word)
                 token_list.append(latest_token)
@@ -52,6 +55,8 @@ def process_line(line):
                 word_list.append(latest_word)
                 token_list.append(latest_token)
             latest_is_punc = False
+            if word.isdigit():
+                word = DIGIT_MASK
             latest_word = word
             latest_token = "O"
     if not latest_is_punc:
