@@ -12,9 +12,11 @@ default_kept_punctuations = {",", ".", "?", "!"}
 def remove_brackets_text(input):
     return re.sub(r"\([^()]*\)", " ", input)
 
+
 def keep_only_latin_characters(input):
-    regex = re.compile('[^\u0020-\u024F]')
-    return regex.sub('', input)
+    regex = re.compile("[^\u0020-\u024F]")
+    return regex.sub("", input)
+
 
 def dataframe_data_cleaning(
     df,
@@ -34,7 +36,9 @@ def dataframe_data_cleaning(
         [p for p in punctuation if p not in kept_punctuations] + additional_to_remove
     )
     translator = str.maketrans("", "", removed_punctuations)
-    space_translator = str.maketrans({key: " {0}".format(key) for key in kept_punctuations})
+    space_translator = str.maketrans(
+        {key: " {0} ".format(key) for key in kept_punctuations}
+    )
 
     df[target_col] = df[target_col].progress_apply(
         lambda x: x.lower().translate(translator).translate(space_translator).strip()
@@ -58,4 +62,4 @@ if __name__ == "__main__":
     df = dataframe_data_cleaning(
         df, "test", default_kept_punctuations, [], remove_brackets_text
     )
-    print(df.head())
+    print(df)

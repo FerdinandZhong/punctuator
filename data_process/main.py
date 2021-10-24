@@ -1,16 +1,9 @@
 import pandas as pd
 from tqdm import tqdm
-from data_process.data_cleanning import (
-    dataframe_data_cleaning,
-    remove_brackets_text,
-)
 
-NER_MAPPING = {
-    ",": "C",
-    ".": "P",
-    "?": "Q",
-    "!": "E"
-}
+from data_process.data_cleanning import dataframe_data_cleaning, remove_brackets_text
+
+NER_MAPPING = {",": "C", ".": "P", "?": "Q", "!": "E"}
 DIGIT_MASK = "<num>"
 
 
@@ -27,7 +20,12 @@ def cleanup_data_from_csv(csv_path, target_col, output_file_path):
     )
     with open(output_file_path, "w+") as output_file:
         for row in result_df[target_col].tolist():
-            output_file.write("%s. \n" % row)
+            if row:
+                if row[-1] not in NER_MAPPING:
+                    output_file.write("%s. \n" % row)
+                else:
+                    output_file.write("%s \n" % row)
+
 
 def process_line(line):
     text_list = line.split()
@@ -65,7 +63,6 @@ def process_line(line):
     return word_list, token_list
 
 
-
 def generate_training_data(cleaned_data_path, training_data_path):
     with open(cleaned_data_path, "r") as data_file:
         lines = data_file.readlines()
@@ -83,4 +80,6 @@ if __name__ == "__main__":
         "transcript",
         "./training_data/cleaned_text.txt",
     )
-    generate_training_data("./training_data/cleaned_text.txt", "./training_data/all_token_tag_data.txt")
+    generate_training_data(
+        "./training_data/cleaned_text.txt", "./training_data/all_token_tag_data.txt"
+    )
