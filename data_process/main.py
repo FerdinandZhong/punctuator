@@ -12,7 +12,7 @@ def cleanup_data_from_csv(csv_path, target_col, output_file_path):
     additional_to_remove = ["—"]
     kept_punctuations = set(NER_MAPPING.keys())
     result_df = dataframe_data_cleaning(
-        dataframe[:1500],
+        dataframe[1500:],
         target_col,
         kept_punctuations,
         additional_to_remove,
@@ -72,14 +72,15 @@ def generate_training_data(cleaned_data_path, training_data_path):
             words, tokens = process_line(line)
             for word, token in zip(words, tokens):
                 training_data_file.write("%s\t%s\n" % (word, token))
+        pbar.close()
 
 
 if __name__ == "__main__":
     cleanup_data_from_csv(
         "./training_data/transcripts.csv",
         "transcript",
-        "./training_data/cleaned_text.txt",
+        "./sample_data/cleaned_text.txt",
     )
     generate_training_data(
-        "./training_data/cleaned_text.txt", "./training_data/all_token_tag_data.txt"
+        "./sample_data/cleaned_text.txt", "./sample_data/all_token_tag_data.txt"
     )

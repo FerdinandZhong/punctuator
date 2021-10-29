@@ -1,12 +1,7 @@
-from sklearn.model_selection import train_test_split
+from tqdm import tqdm
 
-
-def split_dataset(token_docs, tag_docs, split_rate):
-    train_texts, val_texts, train_tags, val_tags = train_test_split(
-        token_docs, tag_docs, test_size=split_rate
-    )
-
-    return train_texts, val_texts, train_tags, val_tags
+PAD_TOKEN = "[PAD]"
+NORMAL_TOKEN_TAG = "O"
 
 
 def read_data(file_path, sequence_length):
@@ -15,17 +10,37 @@ def read_data(file_path, sequence_length):
 
     token_docs = []
     tag_docs = []
+    line_index = 0
+
+    token_doc = []
+    tag_doc = []
     with open(file_path, "r") as data_file:
-        for line in data_file:
+        pbar = tqdm(data_file.readlines())
+        for line in pbar:
+            if line_index == 0:
+                token_doc = []
+                tag_doc = []
             processed_line = read_line(line)
-            token_docs.append(processed_line[0])
-            tag_docs.append(processed_line[1])
+            token_doc.append(processed_line[0])
+            tag_doc.append(processed_line[1])
+            line_index += 1
+            if line_index == sequence_length:
+                token_docs.append(token_doc)
+                tag_docs.append(tag_doc)
+                line_index = 0
+                pbar.update(sequence_length)
+        token_doc += [PAD_TOKEN] * (sequence_length - line_index)
+        tag_doc += [NORMAL_TOKEN_TAG] * (sequence_length - line_index)
+        token_docs.append(token_doc)
+        tag_docs.append(tag_doc)
+
+        pbar.close()
 
     return token_docs, tag_docs
 
 
 def generate_tag_ids(tag_docs):
-    unique_tags = set(tag_docs)
+    unique_tags = set([tag for tags in tag_docs for tag in tags])
     tag2id = {tag: id for id, tag in enumerate(unique_tags)}
     id2tag = {id: tag for tag, id in tag2id.items()}
 
@@ -33,4 +48,5 @@ def generate_tag_ids(tag_docs):
 
 
 if __name__ == "__main__":
-    print(read_data("./training_data/all_token_tag_data.txt")[0][10])
+    tokens, tag_docs = read_data("./sample_data/all_token_tag_data.txt", 120)
+    print(tokens[0], tag_docs[0])

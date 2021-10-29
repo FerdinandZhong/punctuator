@@ -1,5 +1,8 @@
 PY_SOURCE_FILES=data_process/ training/ #this can be modified to include more files
 
+install: package
+	pip install -e .[dev]
+
 test:
 	python -m unittest discover -s test -p '*_test.py'
 
@@ -7,6 +10,9 @@ clean:
 	rm -rf build/ dist/ *.egg-info .pytest_cache
 	find . -name '*.pyc' -type f -exec rm -rf {} +
 	find . -name '__pycache__' -exec rm -rf {} +
+
+package: clean
+	python3 setup.py sdist bdist_wheel
 
 format:
 	autoflake --in-place --remove-all-unused-imports --recursive ${PY_SOURCE_FILES}
