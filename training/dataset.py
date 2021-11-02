@@ -49,4 +49,4 @@ def generate_tag_ids(tag_docs):
 
 if __name__ == "__main__":
     tokens, tag_docs = read_data("./sample_data/all_token_tag_data.txt", 120)
-    print(tokens[0], tag_docs[0])
+    print(tokens[1], tag_docs[1])

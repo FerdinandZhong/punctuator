@@ -2,9 +2,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from data_process.data_cleanning import dataframe_data_cleaning, remove_brackets_text
-
-NER_MAPPING = {",": "C", ".": "P", "?": "Q", "!": "E"}
-DIGIT_MASK = "<num>"
+from utils.constant import DIGIT_MASK, NER_MAPPING
 
 
 def cleanup_data_from_csv(csv_path, target_col, output_file_path):
