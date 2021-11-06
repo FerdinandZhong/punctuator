@@ -36,3 +36,14 @@ def register_logger(logger=None):
         handler.setFormatter(ColorfulFormatter())
         logger.setLevel(logging.DEBUG)
         logger.addHandler(handler)
+
+
+def recv_all(conn, length):
+    buffer = bytearray(length)
+    mv = memoryview(buffer)
+    size = 0
+    while size < length:
+        packet = conn.recv_bytes_into(mv)
+        mv = mv[packet:]
+        size += packet
+    return buffer

@@ -19,6 +19,9 @@ with open("models/tag2id.json", "r") as fp:
     tag2id = json.load(fp)
     id2tag = {id: tag for tag, id in tag2id.items()}
 
+with open("models/id2tag.json", "w") as fp:
+    json.dump(id2tag, fp, indent=4)
+
 
 def process_results(device, logits, marks, all_tokens, digit_indexes):
     if device.type == "cuda":

@@ -1,31 +1,26 @@
 import json
 import logging
-import os
-import selectors
-import signal
-import socket
 import struct
 from itertools import filterfalse
-from threading import Event
 
 import numpy as np
+import signal
 import torch
 from pydantic import BaseModel
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
 
-from utils.constant import DIGIT_MASK, TAG_PUNCTUATOR_MAP
-from utils.utils import register_logger
+from utils.constant import (
+    DIGIT_MASK,
+    LENGTH_BYTE_FORMAT,
+    LENGTH_BYTE_LENGTH,
+    NUM_BYTE_FORMAT,
+    NUM_BYTE_LENGTH,
+    TAG_PUNCTUATOR_MAP,
+)
+from utils.utils import recv_all, register_logger
 
 logger = logging.getLogger(__name__)
 register_logger(logger)
-
-
-# byte format
-NUM_BYTE_FORMAT = "!H"
-LENGTH_BYTE_FORMAT = "!I"
-
-NUM_BYTE_LENGTH = 2
-LENGTH_BYTE_LENGTH = 4
 
 
 class InferenceArguments(BaseModel):
@@ -39,7 +34,7 @@ class InferenceArguments(BaseModel):
 
     model_name_or_path: str
     tokenizer_name: str
-    id2tag_storage_path: str
+    tag2id_storage_path: str
 
 
 # whole pipeline running in the seperate process, provide a function for user to call, use socket for communication
@@ -57,8 +52,9 @@ class InferencePipeline:
         self.classifer = DistilBertForTokenClassification.from_pretrained(
             inference_arguments.model_name_or_path
         )
-        with open(inference_arguments.id2tag_storage_path, "r") as fp:
-            self.id2tag = json.load(fp)
+        with open(inference_arguments.tag2id_storage_path, "r") as fp:
+            tag2id = json.load(fp)
+            self.id2tag = {id: tag for tag, id in tag2id.items()}
 
         self.digit_indexes = []
         self.all_tokens = []
@@ -78,7 +74,7 @@ class InferencePipeline:
 
     def tokenize(self):
         self.inputs = self.tokenizer(
-            self.input_tokens,
+            self.all_tokens,
             is_split_into_words=True,
             padding=True,
             truncation=True,
@@ -91,7 +87,7 @@ class InferencePipeline:
     def classify(self):
         input_ids = self.inputs["input_ids"].to(self.device)
         attention_mask = self.inputs["attention_mask"].to(self.device)
-        self.logits = self.model(input_ids, attention_mask).logits
+        self.logits = self.classifer(input_ids, attention_mask).logits
         return self
 
     def post_process(self):
@@ -104,7 +100,7 @@ class InferencePipeline:
 
         next_upper = True
         for pred, reduce_ignored, tokens, digit_index in zip(
-            max_preds, reduce_ignored_marks, self.input_tokens, self.digit_indexes
+            max_preds, reduce_ignored_marks, self.all_tokens, self.digit_indexes
         ):
             true_pred = pred[reduce_ignored]
             result_text = ""
@@ -116,13 +112,13 @@ class InferencePipeline:
                     token = token.capitalize()
                 punctuator, next_upper = TAG_PUNCTUATOR_MAP[tag]
                 result_text += token + punctuator
-            self.outputs.append(result_text)
+            self.outputs.append(result_text.strip())
         return self.outputs
 
     def punctuation(self, inputs):
         return self.pre_process(inputs).tokenize().classify().post_process()
 
-    def _mark_ignored_tokens(offset_mapping):
+    def _mark_ignored_tokens(self, offset_mapping):
         samples = []
         for sample_offset in offset_mapping:
             # create an empty array of -100
@@ -139,117 +135,47 @@ class InferencePipeline:
 class InferenceServer:
     """Inference server"""
 
-    def __init__(
-        self,
-        inference_args,
-        socket_address="/tmp/socket",
-    ) -> None:
+    def __init__(self, inference_args, conn, termination, check_interval=0.1) -> None:
         """Server for receiving tasks from client and do punctuation
 
         Args:
             server_address (str, optional): [server socket address]. Defaults to "/tmp/socket".
         """
-        try:
-            os.remove(socket_address)
-        except OSError:
-            pass
-        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.socket.bind(socket_address)
-        self.socket.listen()
-        logger.info(f"inference server is listening on {socket_address}")
-        self.socket.setblocking(False)
-
-        self.sel = selectors.DefaultSelector()
-        self.sel.register(self.socket, selectors.EVENT_READ, data=self.accept)
-
         self.inference_pipeline = InferencePipeline(inference_args)
-
-    def accept(self, sock):
-        conn, addr = sock.accept()  # Should be ready to read
-        logger.info(f"accepted connection from {addr}")
-        conn.setblocking(False)
-        events = selectors.EVENT_READ | selectors.EVENT_WRITE
-        self.sel.register(conn, events, data=self.punctuation)
-        if self.termination.is_set():
-            self.sel.unregister(sock)
+        self.conn = conn
+        self.termination = termination
+        self.check_interval = check_interval
 
     # data structure: |num|length|text|length|text...
-    def punctuation(self, conn):
-        num_bytes = conn.recv(NUM_BYTE_LENGTH)
-        if num_bytes:
-            all_payloads = []
-            output_array = bytearray()
-            output_array += num_bytes
-            num = struct.unpack(NUM_BYTE_FORMAT, num_bytes)[0]
-            while num > 0:
-                length_bytes = conn.recv(LENGTH_BYTE_LENGTH)
-                length = struct.unpack(LENGTH_BYTE_FORMAT, length_bytes)[0]
-                all_payloads.append(self._recv_all(conn, length).decode())
-                num -= 1
-            outputs = self.inference_pipeline.punctuation()
-            for output in outputs:
-                output_array += (
-                    struct.pack(LENGTH_BYTE_FORMAT, len(output.encode()))
-                    + output.encode()
-                )
-            self.conn.send(output_array)
-
-    def _recv_all(self, conn, length):
-        buffer = bytearray(length)
-        mv = memoryview(buffer)
-        size = 0
-        while size < length:
-            packet = conn.recv_into(mv)
-            mv = mv[packet:]
-            size += packet
-        return buffer
-
-    def _init_termination(self):
-        """init signal handler and termination event"""
-        self.termination = Event()
-        signal.signal(signal.SIGTERM, self._terminate)
-        signal.signal(signal.SIGINT, self._terminate)
-
-    def _terminate(self, signum, frame):
-        """graceful shutdown everything"""
-        logger.info(f"[{signum}] terminate server: {frame}")
-
-        self.termination.set()
+    def punctuation(self):
+        try:
+            inputs = self.conn.recv()
+            outputs = self.inference_pipeline.punctuation(inputs)
+            self.conn.send(outputs)
+        except OSError as err:
+            logger.warning(f"error receiving inputs: {err}")
+        except struct.error as err:
+            logger.warning(f"struct unpack error: {err}")
 
     def run(self):
         assert self.inference_pipeline, "no inference pipeline set up"
         logger.info("server is running")
         while True:
-            events = self.sel.select(timeout=None)
-            for key, _ in events:
-                callback = key.data
-                callback(key.fileobj)
-            if self.termination.is_set():
-                logger.info("termination is set")
+            try:
+                if self.termination.is_set():
+                    logger.info("termination is set")
+                    break
+                if self.conn.poll(self.check_interval):
+                    self.punctuation()
+            except (struct.error, OSError) as err:
+                logger.warning(f"struct unpack error: {err}")
+                raise err
+            except KeyboardInterrupt:
+                logger.warning("punctuator shut down by keyboard interrupt")
                 break
-        self.socket.close()
-        self.sel.close()
+        self.terminate()
 
+    def terminate(self):
+        logger.info("terminate punctuation server")
 
-class InferenceClient:
-    """Inference client"""
-
-
-# class InferenceInterface:
-#     """Interface for using the inference"""
-
-#     @classmethod
-#     def launch_inference(cls):
-#         # TODO: launch pipeline instance in
-#         pass
-
-#     @classmethod
-#     def pass_text(cls):
-#         pass
-
-# TODO: sdk interface
-# launch_service()
-# punctuatation()
-
-# model inference --> processes ---> async + dserving + batching
-# unix socket to call
+        self.conn.close()
