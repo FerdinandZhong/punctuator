@@ -3,7 +3,7 @@ TAG_PUNCTUATOR_MAP = {
     "C": (", ", False),
     "P": (". ", True),
     "Q": ("? ", True),
-    "E": ("! ", True)
+    "E": ("! ", True),
 }
 
 NER_MAPPING = {",": "C", ".": "P", "?": "Q", "!": "E"}
@@ -16,4 +16,3 @@ LENGTH_BYTE_FORMAT = "!I"
 
 NUM_BYTE_LENGTH = 2
 LENGTH_BYTE_LENGTH = 4
-

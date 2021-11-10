@@ -8,13 +8,7 @@ from time import sleep
 from typing import List
 
 from inference.inference_pipeline import InferenceServer
-from utils.constant import (
-    LENGTH_BYTE_FORMAT,
-    LENGTH_BYTE_LENGTH,
-    NUM_BYTE_FORMAT,
-    NUM_BYTE_LENGTH,
-)
-from utils.utils import recv_all, register_logger
+from utils.utils import register_logger
 
 logger = logging.getLogger(__name__)
 register_logger(logger)
@@ -54,11 +48,13 @@ class Inference:
         socket_address="/tmp/punctuator.socket",
         method="spawn",
         check_interval=0.1,
+        verbose=False,
     ) -> None:
         self.termination = mp.get_context(method).Event()
         self.method = method
         self.inference_args = inference_args
         self.socket_address = socket_address
+        self.verbose = verbose
 
         self._init_termination()
         self._produce_server()
@@ -72,6 +68,7 @@ class Inference:
             inference_args=self.inference_args,
             conn=self.s_conn,
             termination=self.termination,
+            verbose=self.verbose,
         )
         self.server_process = mp.get_context(self.method).Process(
             target=server.run,
@@ -82,7 +79,6 @@ class Inference:
 
         logger.info("start client")
         self.client = InferenceClient(conn=self.c_conn)
-
 
     def _init_termination(self):
         """init signal handler and termination event"""
@@ -125,7 +121,7 @@ if __name__ == "__main__":
         tag2id_storage_path="models/tag2id.json",
     )
 
-    inference = Inference(inference_args=args)
+    inference = Inference(inference_args=args, verbose=True)
 
     test_texts = [
         "how are you its been ten years since we met in shanghai im really happen to meet you again whats your current phone number",
