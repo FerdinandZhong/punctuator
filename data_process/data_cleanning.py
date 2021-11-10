@@ -1,7 +1,6 @@
 import re
 from string import punctuation
 
-import pandas as pd
 from tqdm import tqdm
 
 tqdm.pandas()
@@ -46,20 +45,3 @@ def dataframe_data_cleaning(
 
     df.dropna(subset=[target_col])
     return df
-
-
-if __name__ == "__main__":
-    df = pd.DataFrame(
-        {
-            "test": [
-                "Good morning. How are you?(Laughter)It's been great, hasn't it?"
-                "This is a test without special character!",
-                "'Hello' who @ are * you (music)?",
-            ]
-        }
-    )
-    print(df.head())
-    df = dataframe_data_cleaning(
-        df, "test", default_kept_punctuations, [], remove_brackets_text
-    )
-    print(df)

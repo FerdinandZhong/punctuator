@@ -67,9 +67,7 @@ class InferencePipeline:
             tag2id = json.load(fp)
             self.id2tag = {id: tag for tag, id in tag2id.items()}
 
-        self.digit_indexes = []
-        self.all_tokens = []
-        self.outputs = []
+        self._reset_values()
         self.verbose = verbose
 
     @verbose("all_tokens")
@@ -113,10 +111,10 @@ class InferencePipeline:
     def post_process(self):
         reduce_ignored_marks = self.marks >= 0
 
-        next_upper = True
         for pred, reduce_ignored, tokens, digit_index in zip(
             self.argmax_preds, reduce_ignored_marks, self.all_tokens, self.digit_indexes
         ):
+            next_upper = True
             true_pred = pred[reduce_ignored]
             result_text = ""
             for id, (index, token) in zip(true_pred, enumerate(tokens)):
@@ -128,9 +126,11 @@ class InferencePipeline:
                 punctuator, next_upper = TAG_PUNCTUATOR_MAP[tag]
                 result_text += token + punctuator
             self.outputs.append(result_text.strip())
+
         return self
 
     def punctuation(self, inputs):
+        self._reset_values()
         return self.pre_process(inputs).tokenize().classify().post_process().outputs
 
     def _mark_ignored_tokens(self, offset_mapping):
@@ -145,6 +145,11 @@ class InferencePipeline:
             samples.append(sample_marks.tolist())
 
         return np.array(samples)
+
+    def _reset_values(self):
+        self.digit_indexes = []
+        self.all_tokens = []
+        self.outputs = []
 
 
 class InferenceServer:
