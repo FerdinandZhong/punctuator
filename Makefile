@@ -23,5 +23,4 @@ lint:
 	isort --check --diff ${PY_SOURCE_FILES}
 	black --check --diff ${PY_SOURCE_FILES}
 	flake8 ${PY_SOURCE_FILES} --count --show-source --statistics --max-line-length 120
-	revive -config revive.toml -formatter friendly .
 
