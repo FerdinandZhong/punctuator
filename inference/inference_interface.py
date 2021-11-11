@@ -96,7 +96,7 @@ class Inference:
 
     def _run(self, check_interval):
         while not self.shutdown.is_set():
-            if not self.server_process.exitcode is None:
+            if self.server_process.exitcode is not None:
                 logger.warning("punctuator is no longer working, restart")
                 self._produce_server()
             sleep(check_interval)
@@ -115,20 +115,3 @@ class Inference:
         self.shutdown.set()
         self.termination.set()
         self.client.terminate()
-
-if __name__ == "__main__":
-    from inference.inference_pipeline import InferenceArguments
-
-    args = InferenceArguments(
-        model_name_or_path="models/punctuator",
-        tokenizer_name="distilbert-base-uncased",
-        tag2id_storage_path="models/tag2id.json",
-    )
-
-    inference = Inference(inference_args=args, verbose=True)
-
-    test_texts = [
-        "how are you its been ten years since we met in shanghai im really happen to meet you again whats your current phone number",
-        "my number is 82732212",
-    ]
-    logger.info(f"testing result {inference.punctuation(test_texts)}")

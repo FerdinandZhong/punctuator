@@ -17,7 +17,7 @@ if __name__ == "__main__":
     inference = Inference(inference_args=args, verbose=True)
 
     test_texts_1 = [
-        "how are you its been ten years since we met in shanghai im really happy to meet you again whats your current phone number",
+        "how are you its been ten years since we met in shanghai im really happy to meet you again whats your current phone number",  # noqa: E501
         "my number is 82732212",
     ]
     logger.info(f"testing result {inference.punctuation(test_texts_1)}")

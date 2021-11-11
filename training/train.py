@@ -18,7 +18,6 @@ from transformers import (
 )
 
 from training.dataset import generate_tag_ids, read_data
-from utils.utils import register_logger
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +187,7 @@ class TrainingPipeline:
                 doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
                 arr_offset = np.array(doc_offset)
 
-                # set labels whose first offset position is 0 and the second is not 0, only special tokens second is also 0
+                # set labels whose first offset position is 0 and the second is not 0
                 doc_enc_labels[
                     (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
                 ] = doc_labels
@@ -289,5 +288,3 @@ def encode_tags(labels, encodings):
         encoded_labels.append(doc_enc_labels.tolist())
 
     return encoded_labels
-
-

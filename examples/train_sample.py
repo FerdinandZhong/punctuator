@@ -1,5 +1,5 @@
-from utils.utils import register_logger
 from training import TrainingArguments, TrainingPipeline
+from utils.utils import register_logger
 
 if __name__ == "__main__":
     register_logger()

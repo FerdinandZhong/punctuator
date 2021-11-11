@@ -1,6 +1,8 @@
-from transformers import DistilBertForTokenClassification
-import os
 import argparse
+import os
+
+from transformers import DistilBertForTokenClassification
+
 
 def upload_model(fine_tuned_model_path):
     fine_tuned_model = DistilBertForTokenClassification.from_pretrained(

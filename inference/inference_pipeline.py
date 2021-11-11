@@ -1,6 +1,7 @@
 import json
 import logging
 import struct
+from functools import wraps
 from itertools import filterfalse
 
 import numpy as np
@@ -13,9 +14,6 @@ from utils.utils import register_logger
 
 logger = logging.getLogger(__name__)
 register_logger(logger)
-
-
-from functools import wraps
 
 
 def verbose(attr_to_log):
@@ -184,7 +182,10 @@ class InferenceServer:
         logger.info("server is running")
         while True:
             try:
-                if self.conn.poll(self.check_interval) and not self.termination.is_set():
+                if (
+                    self.conn.poll(self.check_interval)
+                    and not self.termination.is_set()
+                ):
                     self.punctuation()
                 if self.termination.is_set():
                     logger.info("termination is set")

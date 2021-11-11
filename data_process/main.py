@@ -71,4 +71,3 @@ def generate_training_data(cleaned_data_path, training_data_path):
             for word, token in zip(words, tokens):
                 training_data_file.write("%s\t%s\n" % (word, token))
         pbar.close()
-
