@@ -4,8 +4,8 @@ if __name__ == "__main__":
     cleanup_data_from_csv(
         "./training_data/transcripts.csv",
         "transcript",
-        "./sample_data/cleaned_text.txt",
+        "./training_data/cleaned_text.txt",
     )
     generate_training_data(
-        "./sample_data/cleaned_text.txt", "./sample_data/all_token_tag_data.txt"
+        "./training_data/cleaned_text.txt", "./training_data/all_token_tag_data.txt"
     )
