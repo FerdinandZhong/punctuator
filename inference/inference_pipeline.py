@@ -184,11 +184,11 @@ class InferenceServer:
         logger.info("server is running")
         while True:
             try:
+                if self.conn.poll(self.check_interval) and not self.termination.is_set():
+                    self.punctuation()
                 if self.termination.is_set():
                     logger.info("termination is set")
                     break
-                if self.conn.poll(self.check_interval):
-                    self.punctuation()
             except (struct.error, OSError) as err:
                 logger.warning(f"struct unpack error: {err}")
                 raise err

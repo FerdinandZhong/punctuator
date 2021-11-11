@@ -9,7 +9,7 @@ register_logger(logger)
 
 if __name__ == "__main__":
     args = InferenceArguments(
-        model_name_or_path="models/punctuator",
+        model_name_or_path="Qishuai/distilbert_punctuator_en",
         tokenizer_name="distilbert-base-uncased",
         tag2id_storage_path="models/tag2id.json",
     )

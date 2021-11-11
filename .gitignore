@@ -129,3 +129,4 @@ dmypy.json
 .pyre/
 
 *_data/**
+distilbert_punctuator_en/**

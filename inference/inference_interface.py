@@ -111,6 +111,10 @@ class Inference:
             logger.error(f"error doing punctuation with details {str(err)}")
         return None
 
+    def terminate(self):
+        self.shutdown.set()
+        self.termination.set()
+        self.client.terminate()
 
 if __name__ == "__main__":
     from inference.inference_pipeline import InferenceArguments

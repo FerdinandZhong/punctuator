@@ -1,10 +1,10 @@
-PY_SOURCE_FILES=data_process/ training/ inference/ utils/ #this can be modified to include more files
+PY_SOURCE_FILES=data_process/ training/ inference/ utils/ examples/ #this can be modified to include more files
 
 install: package
 	pip install -e .[dev]
 
 test:
-	python -m unittest discover -s test -p '*_test.py'
+	pytest tests -vv
 
 clean:
 	rm -rf build/ dist/ *.egg-info .pytest_cache
