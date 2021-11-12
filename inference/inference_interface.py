@@ -15,7 +15,7 @@ register_logger(logger)
 
 
 class InferenceClient:
-    """Inference client"""
+    """Inference client for communicating with punctuator server"""
 
     def __init__(self, conn, check_interval=0.1) -> None:
         self.conn = conn
@@ -45,29 +45,38 @@ class Inference:
     def __init__(
         self,
         inference_args,
-        socket_address="/tmp/punctuator.socket",
         method="spawn",
-        check_interval=0.1,
+        server_check_interval=0.1,
+        task_check_interval=0.05,
         verbose=False,
     ) -> None:
+        """Inference class for using the punctuator
+
+        Args:
+            inference_args (InferenceArguments): inference arguments
+            method (str, optional): "fork" or "spawn". Defaults to "spawn".
+            server_check_interval (float, optional): interval to check punctuator running status. Defaults to 0.1.
+            task_check_interval (float, optional): interval to check new task. Defaults to 0.05.
+            verbose (bool, optional): whether to ouput punctuation progress. Defaults to False.
+        """
         self.termination = mp.get_context(method).Event()
         self.method = method
         self.inference_args = inference_args
-        self.socket_address = socket_address
         self.verbose = verbose
 
         self._init_termination()
-        self._produce_server()
-        self.thread = Thread(target=self._run, args=(check_interval,))
+        self._produce_server(task_check_interval)
+        self.thread = Thread(target=self._run, args=(server_check_interval,))
         self.thread.start()
 
-    def _produce_server(self):
+    def _produce_server(self, task_check_interval):
         logger.info("set up punctuator")
         self.c_conn, self.s_conn = mp.Pipe(True)
         server = InferenceServer(
             inference_args=self.inference_args,
             conn=self.s_conn,
             termination=self.termination,
+            check_interval=task_check_interval,
             verbose=self.verbose,
         )
         self.server_process = mp.get_context(self.method).Process(

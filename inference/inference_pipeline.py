@@ -154,7 +154,7 @@ class InferenceServer:
     """Inference server"""
 
     def __init__(
-        self, inference_args, conn, termination, check_interval=0.1, verbose=False
+        self, inference_args, conn, termination, check_interval, verbose=False
     ) -> None:
         """Server for receiving tasks from client and do punctuation
 

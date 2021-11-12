@@ -6,7 +6,7 @@ TAG_PUNCTUATOR_MAP = {
     "E": ("! ", True),
 }
 
-NER_MAPPING = {",": "C", ".": "P", "?": "Q", "!": "E"}
+DEFAULT_NER_MAPPING = {",": "C", ".": "P", "?": "Q", "!": "E"}
 DIGIT_MASK = "<num>"
 
 

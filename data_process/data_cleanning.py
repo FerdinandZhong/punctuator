@@ -1,4 +1,3 @@
-import re
 from string import punctuation
 
 from tqdm import tqdm
@@ -8,27 +7,14 @@ tqdm.pandas()
 default_kept_punctuations = {",", ".", "?", "!"}
 
 
-def remove_brackets_text(input):
-    return re.sub(r"\([^()]*\)", " ", input)
-
-
-def keep_only_latin_characters(input):
-    regex = re.compile("[^\u0020-\u024F]")
-    return regex.sub("", input)
-
-
 def dataframe_data_cleaning(
-    df,
-    target_col,
-    kept_punctuations={},
-    additional_to_remove=[],
-    *special_cleaning_func
+    df, target_col, kept_punctuations, additional_to_remove, *special_cleaning_funcs
 ):
     """
     Clean up data in dataframe by removing all special characters except kept ones.
     """
-    if special_cleaning_func:
-        for func in special_cleaning_func:
+    if special_cleaning_funcs:
+        for func in special_cleaning_funcs:
             df[target_col] = df[target_col].progress_apply(lambda x: func(x))
 
     removed_punctuations = "".join(

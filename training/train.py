@@ -52,6 +52,11 @@ class TrainingArguments(BaseModel):
 
 class TrainingPipeline:
     def __init__(self, training_arguments):
+        """Training pipeline for fine-tuning the distilbert token classifier for punctuation
+
+        Args:
+            training_arguments (TrainingArguments): arguments passed to training pipeline
+        """
         self.arguments = training_arguments
         self.device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
