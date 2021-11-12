@@ -45,8 +45,3 @@ def generate_tag_ids(tag_docs):
     id2tag = {id: tag for tag, id in tag2id.items()}
 
     return tag2id, id2tag
-
-
-if __name__ == "__main__":
-    tokens, tag_docs = read_data("./sample_data/all_token_tag_data.txt", 120)
-    print(tokens[1], tag_docs[1])
