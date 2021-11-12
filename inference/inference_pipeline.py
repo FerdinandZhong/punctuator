@@ -1,26 +1,35 @@
 import json
 import logging
 import struct
+from functools import wraps
 from itertools import filterfalse
 
 import numpy as np
-import signal
 import torch
 from pydantic import BaseModel
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
 
-from utils.constant import (
-    DIGIT_MASK,
-    LENGTH_BYTE_FORMAT,
-    LENGTH_BYTE_LENGTH,
-    NUM_BYTE_FORMAT,
-    NUM_BYTE_LENGTH,
-    TAG_PUNCTUATOR_MAP,
-)
-from utils.utils import recv_all, register_logger
+from utils.constant import DIGIT_MASK, TAG_PUNCTUATOR_MAP
+from utils.utils import register_logger
 
 logger = logging.getLogger(__name__)
 register_logger(logger)
+
+
+def verbose(attr_to_log):
+    def wrapper_out(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            self = func(self, *args, **kwargs)
+            if self.verbose:
+                logger.debug(
+                    f'After {func.__name__}, {attr_to_log} is generated as "{getattr(self, attr_to_log)}"'
+                )
+            return self
+
+        return wrapper
+
+    return wrapper_out
 
 
 class InferenceArguments(BaseModel):
@@ -41,7 +50,7 @@ class InferenceArguments(BaseModel):
 class InferencePipeline:
     """Pipeline for inference"""
 
-    def __init__(self, inference_arguments):
+    def __init__(self, inference_arguments, verbose=False):
         self.arguments = inference_arguments
         self.device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -56,10 +65,10 @@ class InferencePipeline:
             tag2id = json.load(fp)
             self.id2tag = {id: tag for tag, id in tag2id.items()}
 
-        self.digit_indexes = []
-        self.all_tokens = []
-        self.outputs = []
+        self._reset_values()
+        self.verbose = verbose
 
+    @verbose("all_tokens")
     def pre_process(self, inputs):
         for input in inputs:
             input_tokens = input.split()
@@ -72,8 +81,9 @@ class InferencePipeline:
             self.all_tokens.append(input_tokens)
         return self
 
+    @verbose("tokenized_input_ids")
     def tokenize(self):
-        self.inputs = self.tokenizer(
+        tokenized_inputs = self.tokenizer(
             self.all_tokens,
             is_split_into_words=True,
             padding=True,
@@ -81,27 +91,28 @@ class InferencePipeline:
             return_offsets_mapping=True,
             return_tensors="pt",
         )
-        self.marks = self._mark_ignored_tokens(self.inputs["offset_mapping"])
+        self.marks = self._mark_ignored_tokens(tokenized_inputs["offset_mapping"])
+        self.tokenized_input_ids = tokenized_inputs["input_ids"].to(self.device)
+        self.attention_mask = tokenized_inputs["attention_mask"].to(self.device)
         return self
 
+    @verbose("argmax_preds")
     def classify(self):
-        input_ids = self.inputs["input_ids"].to(self.device)
-        attention_mask = self.inputs["attention_mask"].to(self.device)
-        self.logits = self.classifer(input_ids, attention_mask).logits
+        logits = self.classifer(self.tokenized_input_ids, self.attention_mask).logits
+        if self.device.type == "cuda":
+            self.argmax_preds = logits.argmax(dim=2).detach().cpu().numpy()
+        else:
+            self.argmax_preds = logits.argmax(dim=2).detach().numpy()
         return self
 
+    @verbose("outputs")
     def post_process(self):
-        if self.device.type == "cuda":
-            max_preds = self.logits.argmax(dim=2).detach().cpu().numpy()
-        else:
-            max_preds = self.logits.argmax(dim=2).detach().numpy()
-
         reduce_ignored_marks = self.marks >= 0
 
-        next_upper = True
         for pred, reduce_ignored, tokens, digit_index in zip(
-            max_preds, reduce_ignored_marks, self.all_tokens, self.digit_indexes
+            self.argmax_preds, reduce_ignored_marks, self.all_tokens, self.digit_indexes
         ):
+            next_upper = True
             true_pred = pred[reduce_ignored]
             result_text = ""
             for id, (index, token) in zip(true_pred, enumerate(tokens)):
@@ -113,10 +124,12 @@ class InferencePipeline:
                 punctuator, next_upper = TAG_PUNCTUATOR_MAP[tag]
                 result_text += token + punctuator
             self.outputs.append(result_text.strip())
-        return self.outputs
+
+        return self
 
     def punctuation(self, inputs):
-        return self.pre_process(inputs).tokenize().classify().post_process()
+        self._reset_values()
+        return self.pre_process(inputs).tokenize().classify().post_process().outputs
 
     def _mark_ignored_tokens(self, offset_mapping):
         samples = []
@@ -131,17 +144,24 @@ class InferencePipeline:
 
         return np.array(samples)
 
+    def _reset_values(self):
+        self.digit_indexes = []
+        self.all_tokens = []
+        self.outputs = []
+
 
 class InferenceServer:
     """Inference server"""
 
-    def __init__(self, inference_args, conn, termination, check_interval=0.1) -> None:
+    def __init__(
+        self, inference_args, conn, termination, check_interval, verbose=False
+    ) -> None:
         """Server for receiving tasks from client and do punctuation
 
         Args:
             server_address (str, optional): [server socket address]. Defaults to "/tmp/socket".
         """
-        self.inference_pipeline = InferencePipeline(inference_args)
+        self.inference_pipeline = InferencePipeline(inference_args, verbose=verbose)
         self.conn = conn
         self.termination = termination
         self.check_interval = check_interval
@@ -162,11 +182,14 @@ class InferenceServer:
         logger.info("server is running")
         while True:
             try:
+                if (
+                    self.conn.poll(self.check_interval)
+                    and not self.termination.is_set()
+                ):
+                    self.punctuation()
                 if self.termination.is_set():
                     logger.info("termination is set")
                     break
-                if self.conn.poll(self.check_interval):
-                    self.punctuation()
             except (struct.error, OSError) as err:
                 logger.warning(f"struct unpack error: {err}")
                 raise err

@@ -1,0 +1,31 @@
+name: Manually upload model to huggingface
+
+on:
+  workflow_dispatch:
+    inputs:
+      fine_tuned_model_path:
+        description: 'path of model to upload to huggingface'
+        required: true
+        default: 'models/punctuator'
+
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          lfs: true
+      - uses: actions/setup-python@v1
+        with:
+          python-version: 3.8
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+      - name: upload model
+        env:
+          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+        run: |
+          python utils/upload_model.py --fine_tuned_model_path=${{ github.event.inputs.fine_tuned_model_path }}

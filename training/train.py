@@ -18,7 +18,6 @@ from transformers import (
 )
 
 from training.dataset import generate_tag_ids, read_data
-from utils.utils import register_logger
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +52,11 @@ class TrainingArguments(BaseModel):
 
 class TrainingPipeline:
     def __init__(self, training_arguments):
+        """Training pipeline for fine-tuning the distilbert token classifier for punctuation
+
+        Args:
+            training_arguments (TrainingArguments): arguments passed to training pipeline
+        """
         self.arguments = training_arguments
         self.device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -188,7 +192,7 @@ class TrainingPipeline:
                 doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
                 arr_offset = np.array(doc_offset)
 
-                # set labels whose first offset position is 0 and the second is not 0, only special tokens second is also 0
+                # set labels whose first offset position is 0 and the second is not 0
                 doc_enc_labels[
                     (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
                 ] = doc_labels
@@ -289,64 +293,3 @@ def encode_tags(labels, encodings):
         encoded_labels.append(doc_enc_labels.tolist())
 
     return encoded_labels
-
-
-if __name__ == "__main__":
-    register_logger()
-
-    training_args = TrainingArguments(
-        data_file_path="training_data/all_token_tag_data.txt",
-        model_name="distilbert-base-uncased",
-        tokenizer_name="distilbert-base-uncased",
-        split_rate=0.2,
-        sequence_length=100,
-        epoch=5,
-        batch_size=64,
-        model_storage_path="models/punctuator",
-        tag2id_storage_path="models/tag2id.json",
-        addtional_model_config={"dropout": 0.2},
-    )
-
-    training_pipeline = TrainingPipeline(training_args)
-    training_pipeline.run()
-
-    # labels = [[0, 0, 0, 3], [2, 2, 0, 0]]
-    # test_text = [
-    #     ["relatively", "a", "contextual", "text"],
-    #     ["second", "test", "[PAD]", "[PAD]"],
-    # ]
-    # tokenizer = DistilBertTokenizerFast.from_pretrained("distilbert-base-uncased")
-    # encodings = tokenizer(
-    #     test_text,
-    #     is_split_into_words=True,
-    #     return_offsets_mapping=True,
-    #     padding=True,
-    #     truncation=True,
-    # )
-    # print(encodings)
-    # attention_mask = encodings["attention_mask"]
-    # encoded_labels = encode_tags(labels, encodings)
-    # encoded_labels = np.array(encoded_labels)
-
-    # config = DistilBertConfig.from_pretrained("distilbert-base-uncased", num_labels=4)
-    # model = DistilBertForTokenClassification.from_pretrained(
-    #     "distilbert-base-uncased", config=config
-    # )
-
-    # inputs = tokenizer(
-    #     test_text, is_split_into_words=True, padding=True, return_tensors="pt"
-    # )
-    # outputs = model(**inputs, labels=torch.tensor(encoded_labels))
-
-    # print(outputs[0])
-    # outputs[0].backward()
-    # preds = outputs.logits.argmax(1).detach().numpy().flatten()
-    # print(preds)
-
-    # flattened_encoded_labesl = encoded_labels.flatten()
-    # flattened_encoded_attention = np.array(attention_mask).flatten()
-    # print(flattened_encoded_labesl, flattened_encoded_attention)
-    # not_padding_labels = flattened_encoded_labesl[flattened_encoded_attention == 1]
-
-    # not_padding_labels = not_padding_labels[not_padding_labels >= 0]
-    # print(np.sum(preds == not_padding_labels) / preds.shape[0])

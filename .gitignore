@@ -128,5 +128,5 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-models/**
 *_data/**
+distilbert_punctuator_en/**

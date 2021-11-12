@@ -12,8 +12,8 @@ with open(path.join(here, "requirements.txt"), encoding="utf-8") as f:
 
 setup(
     name="distilbert_punctuator",
-    version="0.1.0",
-    description="A small seq2seq punctuator based on DistilBERT",
+    version="1.0.0",
+    description="A small seq2seq punctuator tool based on DistilBERT",
     long_description=readme,
     long_description_content_type="text/markdown",
     author="Zhong Qishuai",
