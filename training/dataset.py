@@ -1,10 +1,13 @@
+import random
+from typing import List
+
 from tqdm import tqdm
 
 PAD_TOKEN = "[PAD]"
 NORMAL_TOKEN_TAG = "O"
 
 
-def read_data(file_path, sequence_length):
+def read_data(file_path, sequence_length) -> List[List]:
     def read_line(text_line):
         return text_line.strip().split("\t")
 
@@ -45,3 +48,11 @@ def generate_tag_ids(tag_docs):
     id2tag = {id: tag for tag, id in tag2id.items()}
 
     return tag2id, id2tag
+
+
+def train_test_split(tokens, tags, test_size=0.2, shuffle=True):
+    if shuffle:
+        random.shuffle(tokens)
+        random.shuffle(tags)
+    index = round(len(tokens) * (1 - test_size))
+    return tokens[:index], tags[:index], tokens[index:], tags[index:]
