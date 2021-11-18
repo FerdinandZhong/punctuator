@@ -6,7 +6,6 @@ from typing import Dict, Optional
 import numpy as np
 import torch
 from pydantic import BaseModel
-from sklearn.model_selection import train_test_split
 from torch._C import device  # noqa: F401
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
@@ -17,7 +16,7 @@ from transformers import (
     DistilBertTokenizerFast,
 )
 
-from training.dataset import generate_tag_ids, read_data
+from training.dataset import generate_tag_ids, read_data, train_test_split
 
 logger = logging.getLogger(__name__)
 
