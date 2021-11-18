@@ -1,7 +1,7 @@
-# DBPunctuator
+# Distilbert-punctuator
 
 ## Introduction
-DBPunctuator is a python package provides a bert-based punctuator (fine-tuned model of `pretrained huggingface DistilBertForTokenClassification`) with following three components:
+Distilbert-punctuator is a python package provides a bert-based punctuator (fine-tuned model of `pretrained huggingface DistilBertForTokenClassification`) with following three components:
 
 * **data process**: funcs for processing user's data to prepare for training. If user perfer to fine-tune the model with his/her own data.
 * **training**: training pipeline. User can fine-tune his/her own punctuator with the pipeline
@@ -9,7 +9,7 @@ DBPunctuator is a python package provides a bert-based punctuator (fine-tuned mo
 
 
 ## Data Process
-Component for pre-processing the training data.
+Component for pre-processing the training data. To use this component, please install as `pip install distilbert-punctuator[data_process]`
 
 The package is providing a simple pipeline for you to generate `NER` format training data.
 

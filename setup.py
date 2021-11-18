@@ -11,7 +11,7 @@ with open(path.join(here, "requirements.txt"), encoding="utf-8") as f:
     requires = [req.strip() for req in f if req]
 
 setup(
-    name="dbpunctuator",
+    name="distilbert-punctuator",
     version="0.1.0",
     description="A small seq2seq punctuator tool based on DistilBERT",
     long_description=readme,
@@ -31,6 +31,7 @@ setup(
     python_requires=">3.6",
     install_requires=requires,
     extras_require={
+        "data_process": ["pandas>=1.3.4"],
         "dev": [
             "pytest>=6",
             "flake8>=3.8",
@@ -38,5 +39,9 @@ setup(
             "isort>=5.6",
             "autoflake>=1.4",
         ],
+    },
+    zip_safe=False,
+    entry_points={
+        "console_scripts": [],
     },
 )
