@@ -31,14 +31,14 @@ setup(
     python_requires=">3.6",
     install_requires=requires,
     extras_require={
-        "data_process": ["pandas>=1.3.4"],
+        "data_process": ["pandas>=1.1.0"],
         "dev": [
             "pytest>=6",
             "flake8>=3.8",
             "black>=20.8b1",
             "isort>=5.6",
             "autoflake>=1.4",
-            "pandas>=1.3.4"
+            "pandas>=1.1.0"
         ],
     },
     zip_safe=False,
