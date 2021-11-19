@@ -22,6 +22,20 @@ Component for providing a training pipeline for fine-tuning a pretrained `Distil
 ### Example
 `examples/train_sample.py`
 
+### Training_arguments:
+Arguments required for the training pipeline.
+
+`data_file_path(str)`: path of training data
+`model_name(str)`: name or path of pre-trained model
+`tokenizer_name(str)`: name of pretrained tokenizer
+`split_rate(float)`: train and validation split rate
+`sequence_length(int)`: sequence length of one sample
+`epoch(int)`: number of epoch
+`batch_size(int)`: batch size
+`model_storage_path(str)`: fine-tuned model storage path
+`tag2id_storage_path(str)`: tag2id storage path
+`addtional_model_config(Optional[Dict])`: additional configuration for model
+
 ## Inference
 Component for providing an inference interface for user to use punctuator.
 
@@ -40,3 +54,12 @@ There is a `graceful shutdown` methodology for the punctuator, hence user dosen'
 
 ### Example
 `examples/inference_sample.py`
+
+### Inference_arguments
+Arguments required for the inference pipeline.
+
+`model_name_or_path(str)`: name or path of pre-trained model
+`tokenizer_name(str)`: name of pretrained tokenizer
+`tag2id_storage_path(Optional[str])`: tag2id storage path. If None, DEFAULT_TAG_ID will be used.
+
+`DEFAULT_TAG_ID`: {"E": 0, "O": 1, "P": 2, "C": 3, "Q": 4}

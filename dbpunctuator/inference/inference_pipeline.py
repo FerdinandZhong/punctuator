@@ -1,8 +1,8 @@
 import json
 import logging
-import struct
 from functools import wraps
 from itertools import filterfalse
+from typing import Optional
 
 import numpy as np
 import torch
@@ -36,12 +36,14 @@ class InferenceArguments(BaseModel):
     Args:
         model_name_or_path(str): name or path of pre-trained model
         tokenizer_name(str): name of pretrained tokenizer
-        tag2id_storage_path(str): tag2id storage path, default None. If None, DEFAULT_TAG_ID will be used.
+        tag2id_storage_path(Optional[str]): tag2id storage path. If None, DEFAULT_TAG_ID will be used.
+
+        DEFAULT_TAG_ID: {"E": 0, "O": 1, "P": 2, "C": 3, "Q": 4}
     """
 
     model_name_or_path: str
     tokenizer_name: str
-    tag2id_storage_path: str = None
+    tag2id_storage_path: Optional[str]
 
 
 # whole pipeline running in the seperate process, provide a function for user to call, use socket for communication
@@ -175,7 +177,6 @@ class InferenceServer:
         self.termination = termination
         self.check_interval = check_interval
 
-    # data structure: |num|length|text|length|text...
     def punctuation(self):
         try:
             inputs = self.conn.recv()
@@ -183,8 +184,6 @@ class InferenceServer:
             self.conn.send(outputs_tuple)
         except OSError as err:
             logger.warning(f"error receiving inputs: {err}")
-        except struct.error as err:
-            logger.warning(f"struct unpack error: {err}")
 
     def run(self):
         assert self.inference_pipeline, "no inference pipeline set up"
@@ -199,8 +198,8 @@ class InferenceServer:
                 if self.termination.is_set():
                     logger.info("termination is set")
                     break
-            except (struct.error, OSError) as err:
-                logger.warning(f"struct unpack error: {err}")
+            except OSError as err:
+                logger.warning(f"sending output error: {err}")
                 raise err
             except KeyboardInterrupt:
                 logger.warning("punctuator shut down by keyboard interrupt")

@@ -7,11 +7,8 @@ on:
       - main
     paths:
       - '.github/workflows/check.yml'
-      - 'data_process/**'
-      - 'inference/**'
+      - 'dbpunctuator/**'
       - 'models/**'
-      - 'training/**'
-      - 'utils/**'
       - 'tests/**'
       - 'examples/**'
       - 'setup.py'
