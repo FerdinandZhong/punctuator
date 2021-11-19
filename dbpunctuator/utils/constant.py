@@ -16,3 +16,5 @@ LENGTH_BYTE_FORMAT = "!I"
 
 NUM_BYTE_LENGTH = 2
 LENGTH_BYTE_LENGTH = 4
+
+DEFAULT_TAG_ID = {"E": 0, "O": 1, "P": 2, "C": 3, "Q": 4}

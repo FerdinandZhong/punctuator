@@ -1,4 +1,4 @@
-from data_process import (
+from dbpunctuator.data_process import (
     cleanup_data_from_csv,
     generate_training_data,
     remove_brackets_text,

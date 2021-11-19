@@ -16,7 +16,7 @@ from transformers import (
     DistilBertTokenizerFast,
 )
 
-from training.dataset import generate_tag_ids, read_data, train_test_split
+from .dataset import generate_tag_ids, read_data, train_test_split
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +68,8 @@ class TrainingPipeline:
         )
         (
             self.train_texts,
-            self.val_texts,
             self.train_tags,
+            self.val_texts,
             self.val_tags,
         ) = train_test_split(texts, tags, test_size=self.arguments.split_rate)
         self.tag2id, self.id2tag = generate_tag_ids(tag_docs=tags)

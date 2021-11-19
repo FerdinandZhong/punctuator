@@ -12,13 +12,13 @@ with open(path.join(here, "requirements.txt"), encoding="utf-8") as f:
 
 setup(
     name="distilbert-punctuator",
-    version="0.1.0",
+    version="0.1.1",
     description="A small seq2seq punctuator tool based on DistilBERT",
     long_description=readme,
     long_description_content_type="text/markdown",
     author="Zhong Qishuai",
     author_email="ferdinandzhong@gmail.com",
-    url="https://https://github.com/FerdinandZhong/punctuator",
+    url="https://github.com/FerdinandZhong/punctuator",
     packages=find_packages(exclude=["tests*", "example*"]),
     classifiers=[
         "Programming Language :: Python :: 3 :: Only",
@@ -38,6 +38,7 @@ setup(
             "black>=20.8b1",
             "isort>=5.6",
             "autoflake>=1.4",
+            "pandas>=1.3.4"
         ],
     },
     zip_safe=False,
