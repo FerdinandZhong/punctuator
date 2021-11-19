@@ -5,7 +5,7 @@ from dbpunctuator.inference import Inference, InferenceArguments
 from tests.common import cleaned_data, processed_data  # noqa: F401
 
 testing_args = InferenceArguments(
-    model_name_or_path="models/punctuator", tokenizer_name="distilbert-base-uncased"
+    model_name_or_path="Qishuai/distilbert_punctuator_en", tokenizer_name="distilbert-base-uncased"
 )
 
 
