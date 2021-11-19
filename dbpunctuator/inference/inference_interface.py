@@ -5,13 +5,14 @@ import struct
 import threading
 from threading import Thread
 from time import sleep
-from typing import List
+from typing import List, Tuple
 
-from inference.inference_pipeline import InferenceServer
-from utils.utils import register_logger
+from .inference_pipeline import InferenceServer
+
+# from utils.utils import register_logger
 
 logger = logging.getLogger(__name__)
-register_logger(logger)
+# register_logger(logger)
 
 
 class InferenceClient:
@@ -112,10 +113,20 @@ class Inference:
         logger.info("terminate the punctuator")
         # self.server_process.terminate()
 
-    def punctuation(self, inputs: List[str]):
+    def punctuation(self, inputs: List[str]) -> Tuple[List[str], List[List]]:
+        """Do punctuation of inputs
+
+        Args:
+            inputs (List[str]): list of plain text (no punctuated text)
+
+        Returns:
+            Tuple[List[str], List[List]]: tuple of outputs.
+            First is the list of punctuated text
+            Second is the list of labels
+        """
         try:
-            outputs = self.client.punctuation(inputs)
-            return outputs
+            outputs_tuple = self.client.punctuation(inputs)
+            return outputs_tuple
         except Exception as err:
             logger.error(f"error doing punctuation with details {str(err)}")
         return None

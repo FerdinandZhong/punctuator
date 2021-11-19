@@ -1,3 +1,2 @@
-models/tag2id.json filter=lfs diff=lfs merge=lfs -text
 models/punctuator/config.json filter=lfs diff=lfs merge=lfs -text
 models/punctuator/pytorch_model.bin filter=lfs diff=lfs merge=lfs -text

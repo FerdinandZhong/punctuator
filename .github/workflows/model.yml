@@ -28,4 +28,4 @@ jobs:
         env:
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
         run: |
-          python utils/upload_model.py --fine_tuned_model_path=${{ github.event.inputs.fine_tuned_model_path }}
+          python dbpunctuator/utils/upload_model.py --fine_tuned_model_path=${{ github.event.inputs.fine_tuned_model_path }}

@@ -4,8 +4,6 @@ from tqdm import tqdm
 
 tqdm.pandas()
 
-default_kept_punctuations = {",", ".", "?", "!"}
-
 
 def dataframe_data_cleaning(
     df, target_col, kept_punctuations, additional_to_remove, *special_cleaning_funcs

@@ -1,19 +1,17 @@
 import json
 import logging
-import struct
 from functools import wraps
 from itertools import filterfalse
+from typing import Optional
 
 import numpy as np
 import torch
 from pydantic import BaseModel
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
 
-from utils.constant import DIGIT_MASK, TAG_PUNCTUATOR_MAP
-from utils.utils import register_logger
+from dbpunctuator.utils.constant import DEFAULT_TAG_ID, DIGIT_MASK, TAG_PUNCTUATOR_MAP
 
 logger = logging.getLogger(__name__)
-register_logger(logger)
 
 
 def verbose(attr_to_log):
@@ -38,12 +36,14 @@ class InferenceArguments(BaseModel):
     Args:
         model_name_or_path(str): name or path of pre-trained model
         tokenizer_name(str): name of pretrained tokenizer
-        tag2id_storage_path(str): tag2id storage path
+        tag2id_storage_path(Optional[str]): tag2id storage path. If None, DEFAULT_TAG_ID will be used.
+
+        DEFAULT_TAG_ID: {"E": 0, "O": 1, "P": 2, "C": 3, "Q": 4}
     """
 
     model_name_or_path: str
     tokenizer_name: str
-    tag2id_storage_path: str
+    tag2id_storage_path: Optional[str]
 
 
 # whole pipeline running in the seperate process, provide a function for user to call, use socket for communication
@@ -61,8 +61,12 @@ class InferencePipeline:
         self.classifer = DistilBertForTokenClassification.from_pretrained(
             inference_arguments.model_name_or_path
         )
-        with open(inference_arguments.tag2id_storage_path, "r") as fp:
-            tag2id = json.load(fp)
+        if inference_arguments.tag2id_storage_path:
+            with open(inference_arguments.tag2id_storage_path, "r") as fp:
+                tag2id = json.load(fp)
+                self.id2tag = {id: tag for tag, id in tag2id.items()}
+        else:
+            tag2id = DEFAULT_TAG_ID
             self.id2tag = {id: tag for tag, id in tag2id.items()}
 
         self._reset_values()
@@ -109,14 +113,18 @@ class InferencePipeline:
     def post_process(self):
         reduce_ignored_marks = self.marks >= 0
 
+        self.outputs_labels = []
         for pred, reduce_ignored, tokens, digit_index in zip(
             self.argmax_preds, reduce_ignored_marks, self.all_tokens, self.digit_indexes
         ):
             next_upper = True
             true_pred = pred[reduce_ignored]
+
             result_text = ""
+            output_labels = []
             for id, (index, token) in zip(true_pred, enumerate(tokens)):
                 tag = self.id2tag[id]
+                output_labels.append(tag)
                 if index in digit_index:
                     token = digit_index[index]
                 if next_upper:
@@ -124,12 +132,15 @@ class InferencePipeline:
                 punctuator, next_upper = TAG_PUNCTUATOR_MAP[tag]
                 result_text += token + punctuator
             self.outputs.append(result_text.strip())
+            self.outputs_labels.append(output_labels)
 
         return self
 
     def punctuation(self, inputs):
         self._reset_values()
-        return self.pre_process(inputs).tokenize().classify().post_process().outputs
+        self.pre_process(inputs).tokenize().classify().post_process()
+
+        return self.outputs, self.outputs_labels
 
     def _mark_ignored_tokens(self, offset_mapping):
         samples = []
@@ -166,16 +177,13 @@ class InferenceServer:
         self.termination = termination
         self.check_interval = check_interval
 
-    # data structure: |num|length|text|length|text...
     def punctuation(self):
         try:
             inputs = self.conn.recv()
-            outputs = self.inference_pipeline.punctuation(inputs)
-            self.conn.send(outputs)
+            outputs_tuple = self.inference_pipeline.punctuation(inputs)
+            self.conn.send(outputs_tuple)
         except OSError as err:
             logger.warning(f"error receiving inputs: {err}")
-        except struct.error as err:
-            logger.warning(f"struct unpack error: {err}")
 
     def run(self):
         assert self.inference_pipeline, "no inference pipeline set up"
@@ -190,8 +198,8 @@ class InferenceServer:
                 if self.termination.is_set():
                     logger.info("termination is set")
                     break
-            except (struct.error, OSError) as err:
-                logger.warning(f"struct unpack error: {err}")
+            except OSError as err:
+                logger.warning(f"sending output error: {err}")
                 raise err
             except KeyboardInterrupt:
                 logger.warning("punctuator shut down by keyboard interrupt")
