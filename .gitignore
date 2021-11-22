@@ -130,3 +130,5 @@ dmypy.json
 
 *_data/**
 distilbert_punctuator_en/**
+
+notes.md
