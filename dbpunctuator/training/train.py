@@ -34,6 +34,7 @@ class TrainingArguments(BaseModel):
         batch_size(int): batch size
         model_storage_path(str): fine-tuned model storage path
         tag2id_storage_path(str): tag2id storage path
+        tag2id_mapping(Optional[Dict]): tag2id mapping, if not provided, it will be generated from training tags
         addtional_model_config(Optional[Dict]): additional configuration for model
     """
 
@@ -46,6 +47,7 @@ class TrainingArguments(BaseModel):
     batch_size: int
     model_storage_path: str
     tag2id_storage_path: str
+    tag2id_mapping: Optional[Dict]
     addtional_model_config: Optional[Dict]
 
 
@@ -72,7 +74,11 @@ class TrainingPipeline:
             self.val_texts,
             self.val_tags,
         ) = train_test_split(texts, tags, test_size=self.arguments.split_rate)
-        self.tag2id, self.id2tag = generate_tag_ids(tag_docs=tags)
+        if self.arguments.tag2id_mapping:
+            self.tag2id = self.arguments.tag2id_mapping
+            self.id2tag = {id: tag for tag, id in self.tag2id.items()}
+        else:
+            self.tag2id, self.id2tag = generate_tag_ids(tag_docs=tags)
 
         return self
 

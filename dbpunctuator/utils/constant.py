@@ -5,8 +5,22 @@ TAG_PUNCTUATOR_MAP = {
     "Q": ("? ", True),
     "E": ("! ", True),
 }
+# TODO: optimize this part
 
-DEFAULT_NER_MAPPING = {",": "C", ".": "P", "?": "Q", "!": "E"}
+DEFAULT_ENGLISH_NER_MAPPING = {",": "C", ".": "P", "?": "Q", "!": "E", "'": "a"}
+DEFAULT_CHINESE_NER_MAPPING = {
+    "，": "CC",
+    "。": "CP",
+    "?": "Q",
+    "!": "E",
+    "：": "CO",
+    "、": "CD",
+}
+
+CHINESE_PUNCS = (
+    "！？｡。＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠《》｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏."
+)
+
 DIGIT_MASK = "<num>"
 
 

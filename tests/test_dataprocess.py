@@ -2,10 +2,10 @@ import re
 
 import pytest
 
-from dbpunctuator.utils.constant import DEFAULT_NER_MAPPING
+from dbpunctuator.utils.constant import DEFAULT_ENGLISH_NER_MAPPING
 from tests.common import cleaned_data, processed_data  # noqa: F401
 
-punctuations = list(DEFAULT_NER_MAPPING.keys())
+punctuations = list(DEFAULT_ENGLISH_NER_MAPPING.keys())
 
 
 @pytest.mark.usefixtures("cleaned_data")

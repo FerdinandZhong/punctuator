@@ -4,9 +4,9 @@ import pytest
 from dbpunctuator.data_process import remove_brackets_text
 from dbpunctuator.data_process.data_cleanning import dataframe_data_cleaning
 from dbpunctuator.data_process.data_process import process_line
-from dbpunctuator.utils.constant import DEFAULT_NER_MAPPING
+from dbpunctuator.utils.constant import DEFAULT_ENGLISH_NER_MAPPING
 
-punctuations = list(DEFAULT_NER_MAPPING.keys())
+punctuations = list(DEFAULT_ENGLISH_NER_MAPPING.keys())
 
 
 @pytest.fixture(scope="module")
@@ -36,7 +36,11 @@ def cleaned_data():
     )
 
     cleaned_df = dataframe_data_cleaning(
-        test_df, "test", set(DEFAULT_NER_MAPPING.keys()), [], remove_brackets_text
+        test_df,
+        "test",
+        set(DEFAULT_ENGLISH_NER_MAPPING.keys()),
+        [],
+        remove_brackets_text,
     )
 
     return cleaned_df["test"].tolist()
