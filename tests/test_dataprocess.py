@@ -2,7 +2,7 @@ import re
 
 import pytest
 
-from dbpunctuator.utils.constant import DEFAULT_ENGLISH_NER_MAPPING
+from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING
 from tests.common import cleaned_data, processed_data  # noqa: F401
 
 punctuations = list(DEFAULT_ENGLISH_NER_MAPPING.keys())

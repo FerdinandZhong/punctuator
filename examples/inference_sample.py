@@ -2,6 +2,7 @@ import logging
 
 from dbpunctuator.inference import Inference, InferenceArguments
 from dbpunctuator.utils.utils import register_logger
+from dbpunctuator.utils import DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP
 
 logger = logging.getLogger(__name__)
 register_logger(logger)
@@ -9,11 +10,12 @@ register_logger(logger)
 
 if __name__ == "__main__":
     args = InferenceArguments(
-        model_name_or_path="Qishuai/distilbert_punctuator_en",
+        model_name_or_path="models/english_punctuator",
         tokenizer_name="distilbert-base-uncased",
+        tag2punctuator=DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP
     )
 
-    inference = Inference(inference_args=args, verbose=True)
+    inference = Inference(inference_args=args, verbose=False)
 
     test_texts_1 = [
         "how are you its been ten years since we met in shanghai im really happy to meet you again whats your current phone number",  # noqa: E501
@@ -52,4 +54,4 @@ if __name__ == "__main__":
         how many hard drives can you fit in an ikea store   right   its pretty big
         """  # noqa: E501
     ]
-    logger.info(f"testing result {inference.punctuation(long_test_text)}")
+    logger.info(f"testing result {inference.punctuation(long_test_text)[0]}")

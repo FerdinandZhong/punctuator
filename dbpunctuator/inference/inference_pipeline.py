@@ -2,14 +2,14 @@ import json
 import logging
 from functools import wraps
 from itertools import filterfalse
-from typing import Optional
+from typing import Dict, Optional
 
 import numpy as np
 import torch
 from pydantic import BaseModel
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
 
-from dbpunctuator.utils.constant import DEFAULT_TAG_ID, DIGIT_MASK, TAG_PUNCTUATOR_MAP
+from dbpunctuator.utils import DIGIT_MASK
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +36,35 @@ class InferenceArguments(BaseModel):
     Args:
         model_name_or_path(str): name or path of pre-trained model
         tokenizer_name(str): name of pretrained tokenizer
-        tag2id_storage_path(Optional[str]): tag2id storage path. If None, DEFAULT_TAG_ID will be used.
-
-        DEFAULT_TAG_ID: {"E": 0, "O": 1, "P": 2, "C": 3, "Q": 4}
+        tag2punctuator(Dict[str, tuple]): tag to punctuator mapping.
+            dbpunctuator.utils provides two mappings for English and Chinese
+                DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP = {
+                    "O": (" ", False),
+                    "C": (", ", False),
+                    "P": (". ", True),
+                    "Q": ("? ", True),
+                    "E": ("! ", True),
+                    "A": ("'", False),
+                }
+                DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP = {
+                    "O": ("", False),
+                    "CC": ("，", False),
+                    "CP": ("。", True),
+                    "CQ": ("? ", True),
+                    "CE": ("! ", True),
+                    "CO": ("：", True),
+                    "CD": ("、", False),
+                }
+            for own fine-tuned model with different tags, pass in your own mapping
+        tag2id_storage_path(Optional[str]): tag2id storage path. Default one is from model config.
+        max_sequence_length(Optional[int]): max sequence length for model, default half of model's max_position_embeddings
     """
 
     model_name_or_path: str
     tokenizer_name: str
+    tag2punctuator: Dict[str, tuple]
     tag2id_storage_path: Optional[str]
+    max_sequence_length: Optional[int]
 
 
 # whole pipeline running in the seperate process, provide a function for user to call, use socket for communication
@@ -51,12 +72,11 @@ class InferencePipeline:
     """Pipeline for inference"""
 
     def __init__(self, inference_arguments, verbose=False):
-        self.arguments = inference_arguments
         self.device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
         self.tokenizer = DistilBertTokenizerFast.from_pretrained(
-            self.arguments.tokenizer_name
+            inference_arguments.tokenizer_name
         )
         self.classifer = DistilBertForTokenClassification.from_pretrained(
             inference_arguments.model_name_or_path
@@ -66,23 +86,38 @@ class InferencePipeline:
                 tag2id = json.load(fp)
                 self.id2tag = {id: tag for tag, id in tag2id.items()}
         else:
-            tag2id = DEFAULT_TAG_ID
-            self.id2tag = {id: tag for tag, id in tag2id.items()}
+            self.id2tag = self.classifer.config.id2label
+        if inference_arguments.max_sequence_length:
+            self.max_sequence_length = inference_arguments.max_sequence_length
+        else:
+            self.max_sequence_length = self.classifer.config.max_position_embeddings // 2
+        self.tag2punctuator = inference_arguments.tag2punctuator
 
         self._reset_values()
         self.verbose = verbose
 
     @verbose("all_tokens")
     def pre_process(self, inputs):
-        for input in inputs:
+
+        def _input_process(input):
             input_tokens = input.split()
             digits = dict(
                 list(filterfalse(lambda x: not x[1].isdigit(), enumerate(input_tokens)))
             )
             for index_key in digits.keys():
                 input_tokens[index_key] = DIGIT_MASK
-            self.digit_indexes.append(digits)
-            self.all_tokens.append(input_tokens)
+            return input_tokens, digits
+
+        for input in inputs:
+            while len(input) > self.max_sequence_length:
+                input_tokens, digits = _input_process(input[:self.max_sequence_length])
+                input = input[self.max_sequence_length:]
+                self.digit_indexes.append(digits)
+                self.all_tokens.append(input_tokens)
+            else:
+                input_tokens, digits = _input_process(input)
+                self.digit_indexes.append(digits)
+                self.all_tokens.append(input_tokens)
         return self
 
     @verbose("tokenized_input_ids")
@@ -129,7 +164,7 @@ class InferencePipeline:
                     token = digit_index[index]
                 if next_upper:
                     token = token.capitalize()
-                punctuator, next_upper = TAG_PUNCTUATOR_MAP[tag]
+                punctuator, next_upper = self.tag2punctuator[tag]
                 result_text += token + punctuator
             self.outputs.append(result_text.strip())
             self.outputs_labels.append(output_labels)

@@ -4,7 +4,7 @@ import pytest
 from dbpunctuator.data_process import remove_brackets_text
 from dbpunctuator.data_process.data_cleanning import dataframe_data_cleaning
 from dbpunctuator.data_process.data_process import process_line
-from dbpunctuator.utils.constant import DEFAULT_ENGLISH_NER_MAPPING
+from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING
 
 punctuations = list(DEFAULT_ENGLISH_NER_MAPPING.keys())
 

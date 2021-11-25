@@ -64,6 +64,7 @@ class Inference:
         self.method = method
         self.inference_args = inference_args
         self.verbose = verbose
+        self.task_check_interval=task_check_interval
 
         self._init_termination()
         self._produce_server(task_check_interval)
@@ -108,7 +109,7 @@ class Inference:
         while not self.shutdown.is_set():
             if self.server_process.exitcode is not None:
                 logger.warning("punctuator is no longer working, restart")
-                self._produce_server()
+                self._produce_server(self.task_check_interval)
             sleep(check_interval)
         logger.info("terminate the punctuator")
         # self.server_process.terminate()

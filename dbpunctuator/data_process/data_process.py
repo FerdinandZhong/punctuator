@@ -4,7 +4,7 @@ from string import punctuation
 import pandas as pd
 from tqdm import tqdm
 
-from dbpunctuator.utils.constant import DEFAULT_ENGLISH_NER_MAPPING, DIGIT_MASK
+from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING, DIGIT_MASK
 
 from .data_cleanning import cleaning_validator, dataframe_data_cleaning
 
@@ -29,13 +29,13 @@ def cleanup_data_from_csv(
         additional_to_remove (list, optional): additional special characters to remove, default []
         special_cleaning_funcs (List[funcs], optional): additional cleaning funcs to apply to csv data, default []
     """
-    dataframe = pd.read_csv(csv_path)
+    dataframe = pd.read_csv(csv_path).dropna(subset=[target_col])
     kept_punctuations = set(ner_mapping.keys())
     removed_punctuations = "".join(
         [p for p in punctuation if p not in kept_punctuations] + additional_to_remove
     )
-    logger.info(kept_punctuations)
-    logger.info(removed_punctuations)
+    logger.info(f"kept punctuations: {kept_punctuations}")
+    logger.info(f"removed_punctuations: {removed_punctuations}")
     logger.info("clean up original data")
     result_df = dataframe_data_cleaning(
         dataframe,

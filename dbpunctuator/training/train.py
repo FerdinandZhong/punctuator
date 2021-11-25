@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from pathlib import Path
 from typing import Dict, Optional
 
 import numpy as np
@@ -32,9 +33,8 @@ class TrainingArguments(BaseModel):
         sequence_length(int): sequence length of one sample
         epoch(int): number of epoch
         batch_size(int): batch size
-        model_storage_path(str): fine-tuned model storage path
-        tag2id_storage_path(str): tag2id storage path
-        tag2id_mapping(Optional[Dict]): tag2id mapping, if not provided, it will be generated from training tags
+        model_storage_dir(str): fine-tuned model storage path
+        tag2id_storage_name(str): tag2id storage name, saved to model dir
         addtional_model_config(Optional[Dict]): additional configuration for model
     """
 
@@ -42,12 +42,11 @@ class TrainingArguments(BaseModel):
     model_name: str
     tokenizer_name: str
     split_rate: float
-    sequence_length: int
+    sequence_length: int  # TODO: add default as model's max
     epoch: int
     batch_size: int
-    model_storage_path: str
-    tag2id_storage_path: str
-    tag2id_mapping: Optional[Dict]
+    model_storage_dir: str
+    tag2id_storage_name: str
     addtional_model_config: Optional[Dict]
 
 
@@ -74,11 +73,7 @@ class TrainingPipeline:
             self.val_texts,
             self.val_tags,
         ) = train_test_split(texts, tags, test_size=self.arguments.split_rate)
-        if self.arguments.tag2id_mapping:
-            self.tag2id = self.arguments.tag2id_mapping
-            self.id2tag = {id: tag for tag, id in self.tag2id.items()}
-        else:
-            self.tag2id, self.id2tag = generate_tag_ids(tag_docs=tags)
+        self.tag2id, self.id2tag = generate_tag_ids(tag_docs=tags)
 
         return self
 
@@ -127,7 +122,8 @@ class TrainingPipeline:
             **self.arguments.addtional_model_config,
         )
         self.classifier = DistilBertForTokenClassification.from_pretrained(
-            self.arguments.model_name, config=config
+            self.arguments.model_name,
+            config=config,
         )
         self.classifier.to(self.device)
 
@@ -180,12 +176,15 @@ class TrainingPipeline:
         logger.info("persist fine-tuned model")
 
         self.classifier.load_state_dict(self.best_state_dict)
-        self.classifier.save_pretrained(self.arguments.model_storage_path)
+        self.classifier.save_pretrained(self.arguments.model_storage_dir)
 
         # persist model parameters
-        json.dump(self.tag2id, open(self.arguments.tag2id_storage_path, "w"), indent=4)
+        tag2id_storage_path = Path(self.arguments.model_storage_dir).joinpath(
+            self.arguments.tag2id_storage_name
+        )
+        json.dump(self.tag2id, open(tag2id_storage_path, "w"), indent=4)
 
-        logger.info(f"fine-tuned model stored to {self.arguments.model_storage_path}")
+        logger.info(f"fine-tuned model stored to {self.arguments.model_storage_dir}")
 
     def _encode_tags(self, tags, encodings):
         logger.info("encoding tags")
@@ -238,6 +237,12 @@ class TrainingPipeline:
                     optim.step()
 
                 pbar.update(1)
+                pbar.set_postfix(
+                    {
+                        "Last_loss": f"{loss:.2f}",
+                        "Avg_cum_loss": f"{epoch_loss/steps:.2f}",
+                    }
+                )
 
         return epoch_loss / steps, epoch_acc / steps
 
