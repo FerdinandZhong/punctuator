@@ -6,12 +6,13 @@ if __name__ == "__main__":
 
     training_args = TrainingArguments(
         data_file_path="training_data/chinese_token_tag_data.txt",
-        model_name="models/distilbert-base-chinese",
+        model_name="models/chinese_punctuator",
         tokenizer_name="bert-base-chinese",
         split_rate=0.2,
-        sequence_length=100,
-        epoch=5,
-        batch_size=64,
+        min_sequence_length=100,
+        max_sequence_length=200,
+        epoch=10,
+        batch_size=32,
         model_storage_dir="models/chinese_punctuator",
         tag2id_storage_name="tag2id.json",
         addtional_model_config={"dropout": 0.2},

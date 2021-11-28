@@ -6,6 +6,7 @@ from typing import Dict, Optional
 
 import numpy as np
 import torch
+from plane import segment
 from pydantic import BaseModel
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
 
@@ -57,14 +58,12 @@ class InferenceArguments(BaseModel):
                 }
             for own fine-tuned model with different tags, pass in your own mapping
         tag2id_storage_path(Optional[str]): tag2id storage path. Default one is from model config.
-        max_sequence_length(Optional[int]): max sequence length for model, default half of model's max_position_embeddings
     """
 
     model_name_or_path: str
     tokenizer_name: str
     tag2punctuator: Dict[str, tuple]
     tag2id_storage_path: Optional[str]
-    max_sequence_length: Optional[int]
 
 
 # whole pipeline running in the seperate process, provide a function for user to call, use socket for communication
@@ -80,17 +79,13 @@ class InferencePipeline:
         )
         self.classifer = DistilBertForTokenClassification.from_pretrained(
             inference_arguments.model_name_or_path
-        )
+        ).to(self.device)
         if inference_arguments.tag2id_storage_path:
             with open(inference_arguments.tag2id_storage_path, "r") as fp:
                 tag2id = json.load(fp)
                 self.id2tag = {id: tag for tag, id in tag2id.items()}
         else:
             self.id2tag = self.classifer.config.id2label
-        if inference_arguments.max_sequence_length:
-            self.max_sequence_length = inference_arguments.max_sequence_length
-        else:
-            self.max_sequence_length = self.classifer.config.max_position_embeddings // 2
         self.tag2punctuator = inference_arguments.tag2punctuator
 
         self._reset_values()
@@ -98,9 +93,8 @@ class InferencePipeline:
 
     @verbose("all_tokens")
     def pre_process(self, inputs):
-
         def _input_process(input):
-            input_tokens = input.split()
+            input_tokens = segment(input)
             digits = dict(
                 list(filterfalse(lambda x: not x[1].isdigit(), enumerate(input_tokens)))
             )
@@ -109,15 +103,9 @@ class InferencePipeline:
             return input_tokens, digits
 
         for input in inputs:
-            while len(input) > self.max_sequence_length:
-                input_tokens, digits = _input_process(input[:self.max_sequence_length])
-                input = input[self.max_sequence_length:]
-                self.digit_indexes.append(digits)
-                self.all_tokens.append(input_tokens)
-            else:
-                input_tokens, digits = _input_process(input)
-                self.digit_indexes.append(digits)
-                self.all_tokens.append(input_tokens)
+            input_tokens, digits = _input_process(input)
+            self.digit_indexes.append(digits)
+            self.all_tokens.append(input_tokens)
         return self
 
     @verbose("tokenized_input_ids")

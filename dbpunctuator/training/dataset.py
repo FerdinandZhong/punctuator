@@ -1,13 +1,16 @@
-import random
+import logging
+from random import randint
 from typing import List
 
+import numpy as np
 from tqdm import tqdm
 
 PAD_TOKEN = "[PAD]"
 NORMAL_TOKEN_TAG = "O"
+logger = logging.getLogger(__name__)
 
 
-def read_data(file_path, sequence_length) -> List[List]:
+def read_data(file_path, min_sequence_length, max_sequence_length) -> List[List]:
     def read_line(text_line):
         return text_line.strip().split("\t")
 
@@ -23,17 +26,24 @@ def read_data(file_path, sequence_length) -> List[List]:
             if line_index == 0:
                 token_doc = []
                 tag_doc = []
+                target_sequence_length = randint(
+                    min_sequence_length, max_sequence_length
+                )
             processed_line = read_line(line)
-            token_doc.append(processed_line[0])
-            tag_doc.append(processed_line[1])
+            try:
+                token_doc.append(processed_line[0])
+                tag_doc.append(processed_line[1])
+            except IndexError:
+                logger.warning(f"ignore the bad line: {line}")
+                continue
             line_index += 1
-            if line_index == sequence_length:
+            if line_index == target_sequence_length:
                 token_docs.append(token_doc)
                 tag_docs.append(tag_doc)
                 line_index = 0
-                pbar.update(sequence_length)
-        token_doc += [PAD_TOKEN] * (sequence_length - line_index)
-        tag_doc += [NORMAL_TOKEN_TAG] * (sequence_length - line_index)
+                pbar.update(target_sequence_length)
+        token_doc += [PAD_TOKEN] * (target_sequence_length - line_index)
+        tag_doc += [NORMAL_TOKEN_TAG] * (target_sequence_length - line_index)
         token_docs.append(token_doc)
         tag_docs.append(tag_doc)
 
@@ -50,9 +60,14 @@ def generate_tag_ids(tag_docs):
     return tag2id, id2tag
 
 
+def unison_shuffled_copies(a, b):
+    assert len(a) == len(b)
+    p = np.random.permutation(len(a))
+    return a[p].tolist(), b[p].tolist()
+
+
 def train_test_split(tokens, tags, test_size=0.2, shuffle=True):
     if shuffle:
-        random.shuffle(tokens)
-        random.shuffle(tags)
+        tokens, tags = unison_shuffled_copies(np.array(tokens), np.array(tags))
     index = round(len(tokens) * (1 - test_size))
     return tokens[:index], tags[:index], tokens[index:], tags[index:]

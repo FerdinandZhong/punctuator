@@ -1,4 +1,5 @@
 from .constant import (
+    ALL_PUNCS,
     CHINESE_PUNCS,
     DEFAULT_CHINESE_NER_MAPPING,
     DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP,
@@ -8,6 +9,7 @@ from .constant import (
 )
 
 __all__ = [
+    "ALL_PUNCS",
     "DEFAULT_ENGLISH_NER_MAPPING",
     "DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP",
     "DEFAULT_CHINESE_NER_MAPPING",

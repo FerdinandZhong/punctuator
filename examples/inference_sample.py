@@ -1,8 +1,8 @@
 import logging
 
 from dbpunctuator.inference import Inference, InferenceArguments
-from dbpunctuator.utils.utils import register_logger
 from dbpunctuator.utils import DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP
+from dbpunctuator.utils.utils import register_logger
 
 logger = logging.getLogger(__name__)
 register_logger(logger)
@@ -12,7 +12,7 @@ if __name__ == "__main__":
     args = InferenceArguments(
         model_name_or_path="models/english_punctuator",
         tokenizer_name="distilbert-base-uncased",
-        tag2punctuator=DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP
+        tag2punctuator=DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP,
     )
 
     inference = Inference(inference_args=args, verbose=False)

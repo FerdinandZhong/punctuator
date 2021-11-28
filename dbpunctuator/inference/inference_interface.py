@@ -64,7 +64,7 @@ class Inference:
         self.method = method
         self.inference_args = inference_args
         self.verbose = verbose
-        self.task_check_interval=task_check_interval
+        self.task_check_interval = task_check_interval
 
         self._init_termination()
         self._produce_server(task_check_interval)

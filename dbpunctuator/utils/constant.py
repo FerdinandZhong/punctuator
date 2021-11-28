@@ -1,3 +1,6 @@
+import sys
+import unicodedata
+
 DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP = {
     "O": (" ", False),
     "C": (", ", False),
@@ -29,6 +32,9 @@ DEFAULT_CHINESE_NER_MAPPING = {
 CHINESE_PUNCS = (
     "！？｡。＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠《》｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏."
 )
+
+ALL_PUNCS = [c for c in range(sys.maxunicode) if unicodedata.category(chr(c)).startswith(("P", "Cc"))]
+
 
 DIGIT_MASK = "<num>"
 

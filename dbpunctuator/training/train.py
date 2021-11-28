@@ -42,12 +42,14 @@ class TrainingArguments(BaseModel):
     model_name: str
     tokenizer_name: str
     split_rate: float
-    sequence_length: int  # TODO: add default as model's max
+    min_sequence_length: int
+    max_sequence_length: int
     epoch: int
     batch_size: int
     model_storage_dir: str
     tag2id_storage_name: str
     addtional_model_config: Optional[Dict]
+    early_stop_count: Optional[int] = 3
 
 
 class TrainingPipeline:
@@ -65,7 +67,9 @@ class TrainingPipeline:
     def load_training_data(self):
         logger.info("load training data")
         texts, tags = read_data(
-            self.arguments.data_file_path, self.arguments.sequence_length
+            self.arguments.data_file_path,
+            self.arguments.min_sequence_length,
+            self.arguments.max_sequence_length,
         )
         (
             self.train_texts,
@@ -87,14 +91,16 @@ class TrainingPipeline:
             is_split_into_words=True,
             return_offsets_mapping=True,
             padding=True,
-            truncation=True,
+            # truncation=True,
+            # max_length=self.arguments.max_sequence_length,
         )
         self.val_encodings = tokenizer(
             self.val_texts,
             is_split_into_words=True,
             return_offsets_mapping=True,
             padding=True,
-            truncation=True,
+            # truncation=True,
+            # max_length=self.arguments.max_sequence_length,
         )
         self.train_labels = self._encode_tags(self.train_tags, self.train_encodings)
         self.val_labels = self._encode_tags(self.val_tags, self.val_encodings)
@@ -114,7 +120,7 @@ class TrainingPipeline:
 
     def fine_tune(self):
         logger.info("start fine tune")
-        config = DistilBertConfig.from_pretrained(
+        self.model_config = DistilBertConfig.from_pretrained(
             self.arguments.model_name,
             label2id=self.tag2id,
             id2label=self.id2tag,
@@ -123,7 +129,7 @@ class TrainingPipeline:
         )
         self.classifier = DistilBertForTokenClassification.from_pretrained(
             self.arguments.model_name,
-            config=config,
+            config=self.model_config,
         )
         self.classifier.to(self.device)
 
@@ -136,6 +142,7 @@ class TrainingPipeline:
         optim = AdamW(self.classifier.parameters(), lr=5e-5)
 
         best_valid_loss = 1
+        no_improvement_count = 0
         with tqdm(total=self.arguments.epoch) as pbar:
             for epoch in range(self.arguments.epoch):
                 pbar.set_description(f"Processing epoch: {epoch + 1}")
@@ -151,10 +158,6 @@ class TrainingPipeline:
 
                 epoch_mins, epoch_secs = self._epoch_time(start_time, end_time)
 
-                if val_loss < best_valid_loss:
-                    best_valid_loss = val_loss
-                    self.best_state_dict = self.classifier.state_dict()
-
                 logger.info(
                     f"Epoch: {epoch + 1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s"
                 )
@@ -165,6 +168,17 @@ class TrainingPipeline:
                     f"\t Val. Loss: {val_loss:.3f} |  Val. Acc: {val_acc * 100:.2f}%"
                 )
                 pbar.update(1)
+
+                if val_loss < best_valid_loss:
+                    best_valid_loss = val_loss
+                    self.best_state_dict = self.classifier.state_dict()
+                else:
+                    no_improvement_count += 1
+                    if no_improvement_count >= self.arguments.early_stop_count:
+                        logger.info(
+                            f"No improvement for past {no_improvement_count} epochs, early stop training."
+                        )
+                        return self
 
             logger.info("fine-tune finished")
 
