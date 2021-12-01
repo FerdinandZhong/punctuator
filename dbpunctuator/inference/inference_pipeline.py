@@ -6,11 +6,11 @@ from typing import Dict, Optional
 
 import numpy as np
 import torch
-from plane import segment
 from pydantic import BaseModel
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
 
-from dbpunctuator.utils import DIGIT_MASK
+from dbpunctuator.data_process import chinese_split
+from dbpunctuator.utils import DIGIT_MASK, is_ascii
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +53,9 @@ class InferenceArguments(BaseModel):
                     "CP": ("。", True),
                     "CQ": ("? ", True),
                     "CE": ("! ", True),
-                    "CO": ("：", True),
+                    "CL": ("：", True),
                     "CD": ("、", False),
+                    "P": (".", True),
                 }
             for own fine-tuned model with different tags, pass in your own mapping
         tag2id_storage_path(Optional[str]): tag2id storage path. Default one is from model config.
@@ -87,25 +88,47 @@ class InferencePipeline:
         else:
             self.id2tag = self.classifer.config.id2label
         self.tag2punctuator = inference_arguments.tag2punctuator
+        self.max_sequence_length = (
+            self.classifer.config.max_position_embeddings // 2
+        )  # for padding and subword
 
         self._reset_values()
         self.verbose = verbose
 
     @verbose("all_tokens")
     def pre_process(self, inputs):
-        def _input_process(input):
-            input_tokens = segment(input)
-            digits = dict(
+        def _input_process(input_tokens):
+            digit_index = dict(
                 list(filterfalse(lambda x: not x[1].isdigit(), enumerate(input_tokens)))
             )
-            for index_key in digits.keys():
+            for index_key in digit_index.keys():
                 input_tokens[index_key] = DIGIT_MASK
-            return input_tokens, digits
+            return input_tokens, digit_index
 
+        index = 0
+        last_is_split = False
+        self.split_inputs_indexes = []
         for input in inputs:
-            input_tokens, digits = _input_process(input)
-            self.digit_indexes.append(digits)
-            self.all_tokens.append(input_tokens)
+            input_tokens = chinese_split(input).split()
+            while len(input_tokens) > self.max_sequence_length:
+                processed_input_tokens, digit_index = list(
+                    _input_process(input_tokens[: self.max_sequence_length])
+                )
+                self.digit_indexes.append(digit_index)
+                self.all_tokens.append(processed_input_tokens)
+                self.split_inputs_indexes.append(index)
+                input_tokens = input_tokens[self.max_sequence_length :]
+                index += 1
+                last_is_split = True
+            else:
+                if last_is_split:
+                    self.split_inputs_indexes.append(index)
+                    last_is_split = False
+                index += 1
+                processed_input_tokens, digit_index = list(_input_process(input_tokens))
+                self.digit_indexes.append(digit_index)
+                self.all_tokens.append(processed_input_tokens)
+        logger.info(f"self split indexes: {self.split_inputs_indexes}")
         return self
 
     @verbose("tokenized_input_ids")
@@ -114,7 +137,6 @@ class InferencePipeline:
             self.all_tokens,
             is_split_into_words=True,
             padding=True,
-            truncation=True,
             return_offsets_mapping=True,
             return_tensors="pt",
         )
@@ -125,11 +147,16 @@ class InferencePipeline:
 
     @verbose("argmax_preds")
     def classify(self):
-        logits = self.classifer(self.tokenized_input_ids, self.attention_mask).logits
-        if self.device.type == "cuda":
-            self.argmax_preds = logits.argmax(dim=2).detach().cpu().numpy()
-        else:
-            self.argmax_preds = logits.argmax(dim=2).detach().numpy()
+        try:
+            logits = self.classifer(
+                self.tokenized_input_ids, self.attention_mask
+            ).logits
+            if self.device.type == "cuda":
+                self.argmax_preds = logits.argmax(dim=2).detach().cpu().numpy()
+            else:
+                self.argmax_preds = logits.argmax(dim=2).detach().numpy()
+        except RuntimeError as e:
+            logger.error(f"error doing punctuation: {str(e)}")
         return self
 
     @verbose("outputs")
@@ -137,8 +164,15 @@ class InferencePipeline:
         reduce_ignored_marks = self.marks >= 0
 
         self.outputs_labels = []
-        for pred, reduce_ignored, tokens, digit_index in zip(
-            self.argmax_preds, reduce_ignored_marks, self.all_tokens, self.digit_indexes
+        temp_ouputs = ""
+        temp_outputs_labels = []
+        for input_index, (pred, reduce_ignored, tokens, digit_index) in enumerate(
+            zip(
+                self.argmax_preds,
+                reduce_ignored_marks,
+                self.all_tokens,
+                self.digit_indexes,
+            )
         ):
             next_upper = True
             true_pred = pred[reduce_ignored]
@@ -153,9 +187,26 @@ class InferencePipeline:
                 if next_upper:
                     token = token.capitalize()
                 punctuator, next_upper = self.tag2punctuator[tag]
-                result_text += token + punctuator
-            self.outputs.append(result_text.strip())
-            self.outputs_labels.append(output_labels)
+                if is_ascii(token):
+                    result_text += token + punctuator + " "
+                else:
+                    result_text += token + punctuator
+            if input_index in self.split_inputs_indexes:
+                temp_ouputs += result_text.strip()
+                temp_outputs_labels.extend(output_labels)
+            else:
+                if temp_ouputs and temp_outputs_labels:
+                    self.outputs.append(temp_ouputs.strip())
+                    self.outputs_labels.append(temp_outputs_labels)
+                    temp_ouputs = ""
+                    temp_outputs_labels = []
+
+                self.outputs.append(result_text.strip())
+                self.outputs_labels.append(output_labels)
+
+        if temp_ouputs and temp_outputs_labels:
+            self.outputs.append(temp_ouputs.strip())
+            self.outputs_labels.append(temp_outputs_labels)
 
         return self
 

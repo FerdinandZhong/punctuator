@@ -15,9 +15,9 @@ def dataframe_data_cleaning(
         for func in special_cleaning_funcs:
             df[target_col] = df[target_col].progress_apply(lambda x: func(x))
 
-    translator = str.maketrans("", "", removed_punctuations)
+    translator = str.maketrans({key: None for key in removed_punctuations})
     space_translator = str.maketrans(
-        {key: " {0} ".format(key) for key in kept_punctuations}
+        {key: " {0} ".format(chr(key)) for key in kept_punctuations}
     )
 
     df[target_col] = df[target_col].progress_apply(
@@ -29,7 +29,9 @@ def dataframe_data_cleaning(
 
 
 def cleaning_validator(text, kept_punctuations, removed_punctuations):
-    regex = re.compile(f"[{removed_punctuations}]")
+    regex = re.compile(
+        "[{}]".format("|".join(map(re.escape, [chr(p) for p in removed_punctuations])))
+    )
     checking_result = regex.search(text)
     assert (
         checking_result is None

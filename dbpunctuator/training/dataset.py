@@ -5,8 +5,9 @@ from typing import List
 import numpy as np
 from tqdm import tqdm
 
+from dbpunctuator.utils import NORMAL_TOKEN_TAG
+
 PAD_TOKEN = "[PAD]"
-NORMAL_TOKEN_TAG = "O"
 logger = logging.getLogger(__name__)
 
 
@@ -68,6 +69,8 @@ def unison_shuffled_copies(a, b):
 
 def train_test_split(tokens, tags, test_size=0.2, shuffle=True):
     if shuffle:
-        tokens, tags = unison_shuffled_copies(np.array(tokens), np.array(tags))
+        tokens, tags = unison_shuffled_copies(
+            np.array(tokens, dtype=object), np.array(tags, dtype=object)
+        )
     index = round(len(tokens) * (1 - test_size))
-    return tokens[:index], tags[:index], tokens[index:], tags[index:]
+    return tokens[:index], tokens[index:], tags[:index], tags[index:]

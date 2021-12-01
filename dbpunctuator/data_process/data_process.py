@@ -1,10 +1,15 @@
 import logging
-from string import punctuation
+import os
 
 import pandas as pd
 from tqdm import tqdm
 
-from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING, DIGIT_MASK
+from dbpunctuator.utils import (
+    ALL_PUNCS,
+    DEFAULT_ENGLISH_NER_MAPPING,
+    DIGIT_MASK,
+    NORMAL_TOKEN_TAG,
+)
 
 from .data_cleanning import cleaning_validator, dataframe_data_cleaning
 
@@ -23,39 +28,43 @@ def cleanup_data_from_csv(
 
     Args:
         csv_path (string): path of training data csv
-        target_col (string): column of training data in csv
+        target_col (list or string): columns of training data in csv
         output_file_path (string): path of cleaned data
-        ner_mapping (dict, optional): NER mapping of punctuation marks. Defaults to utils.constant.DEFAULT_ENGLISH_NER_MAPPING keys
+        ner_mapping (dict, optional): NER mapping of punctuation marks. Defaults to utils.constant.DEFAULT_ENGLISH_NER_MAPPING keys  # noqa: E501
         additional_to_remove (list, optional): additional special characters to remove, default []
         special_cleaning_funcs (List[funcs], optional): additional cleaning funcs to apply to csv data, default []
     """
-    dataframe = pd.read_csv(csv_path).dropna(subset=[target_col])
-    kept_punctuations = set(ner_mapping.keys())
-    removed_punctuations = "".join(
-        [p for p in punctuation if p not in kept_punctuations] + additional_to_remove
-    )
-    logger.info(f"kept punctuations: {kept_punctuations}")
-    logger.info(f"removed_punctuations: {removed_punctuations}")
+    target_col = target_col if isinstance(target_col, list) else [target_col]
+    dataframe = pd.read_csv(csv_path).dropna(subset=target_col)
+    kept_punctuations = [ord(p) for p in set(ner_mapping.keys())]
+    removed_punctuations = [p for p in ALL_PUNCS if p not in kept_punctuations] + [
+        ord(p) for p in additional_to_remove
+    ]
     logger.info("clean up original data")
-    result_df = dataframe_data_cleaning(
-        dataframe,
-        target_col,
-        kept_punctuations,
-        removed_punctuations,
-        *special_cleaning_funcs,
-    )
-    with open(output_file_path, "w+") as output_file:
-        for row in result_df[target_col].tolist():
-            try:
-                if row and cleaning_validator(
-                    row, kept_punctuations, removed_punctuations
-                ):
-                    if row[-1] not in ner_mapping:
-                        output_file.write("%s . \n" % row)
-                    else:
-                        output_file.write("%s \n" % row)
-            except AssertionError as e:
-                logger.warning(str(e))
+    try:
+        os.remove(output_file_path)
+    except FileNotFoundError:
+        pass
+    for col in target_col:
+        result_df = dataframe_data_cleaning(
+            dataframe,
+            col,
+            kept_punctuations,
+            removed_punctuations,
+            *special_cleaning_funcs,
+        )
+        with open(output_file_path, "a+") as output_file:
+            for row in result_df[col].tolist():
+                try:
+                    if row and cleaning_validator(
+                        row, kept_punctuations, removed_punctuations
+                    ):
+                        if row[-1] not in ner_mapping:
+                            output_file.write("%s . \n" % row)
+                        else:
+                            output_file.write("%s \n" % row)
+                except AssertionError as e:
+                    logger.warning(str(e))
 
 
 def process_line(line, ner_mapping):
@@ -68,7 +77,7 @@ def process_line(line, ner_mapping):
         if not text_list:
             break
         latest_word = text_list.pop(0)
-    latest_token = "O"
+    latest_token = NORMAL_TOKEN_TAG
     latest_is_punc = False
     for word in text_list:
         if word in ner_mapping:
@@ -87,7 +96,7 @@ def process_line(line, ner_mapping):
             if word.isdigit():
                 word = DIGIT_MASK
             latest_word = word
-            latest_token = "O"
+            latest_token = NORMAL_TOKEN_TAG
     if not latest_is_punc:
         token_list.append(latest_word)
         tag_list.append(latest_token)
@@ -95,13 +104,17 @@ def process_line(line, ner_mapping):
 
 
 def generate_training_data(
-    cleaned_data_path, training_data_path, ner_mapping=DEFAULT_ENGLISH_NER_MAPPING
+    cleaned_data_path,
+    training_data_path,
+    ner_mapping=DEFAULT_ENGLISH_NER_MAPPING,
 ):
     """generate "token tag" format training data based on cleaned text
 
     Args:
         cleaned_data_path (string): path of cleaned data
         training_data_path (string): path of generated training data
+        plain_token (string, optional): token for plain token, default "O"
+        ner_mapping (dict, optional): ner mapping for puncs and labels
     """
     logger.info("generate training data")
     with open(cleaned_data_path, "r") as data_file:

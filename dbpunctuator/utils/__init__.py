@@ -1,12 +1,13 @@
 from .constant import (
     ALL_PUNCS,
-    CHINESE_PUNCS,
     DEFAULT_CHINESE_NER_MAPPING,
     DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP,
     DEFAULT_ENGLISH_NER_MAPPING,
     DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP,
     DIGIT_MASK,
+    NORMAL_TOKEN_TAG,
 )
+from .utils import is_ascii
 
 __all__ = [
     "ALL_PUNCS",
@@ -15,5 +16,6 @@ __all__ = [
     "DEFAULT_CHINESE_NER_MAPPING",
     "DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP",
     "DIGIT_MASK",
-    "CHINESE_PUNCS",
+    "NORMAL_TOKEN_TAG",
+    "is_ascii",
 ]

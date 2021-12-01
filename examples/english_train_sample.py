@@ -11,10 +11,9 @@ if __name__ == "__main__":
         split_rate=0.2,
         min_sequence_length=100,
         max_sequence_length=200,
-        epoch=5,
-        batch_size=64,
-        model_storage_dir="models/punctuator",
-        tag2id_storage_name="tag2id.json",
+        epoch=10,
+        batch_size=32,
+        model_storage_dir="models/english_punctuator_2",
         addtional_model_config={"dropout": 0.2},
     )
 

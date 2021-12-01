@@ -1,7 +1,5 @@
-import json
 import logging
 import time
-from pathlib import Path
 from typing import Dict, Optional
 
 import numpy as np
@@ -19,6 +17,8 @@ from transformers import (
 
 from .dataset import generate_tag_ids, read_data, train_test_split
 
+# from sklearn.model_selection import train_test_split
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,7 +34,6 @@ class TrainingArguments(BaseModel):
         epoch(int): number of epoch
         batch_size(int): batch size
         model_storage_dir(str): fine-tuned model storage path
-        tag2id_storage_name(str): tag2id storage name, saved to model dir
         addtional_model_config(Optional[Dict]): additional configuration for model
     """
 
@@ -47,7 +46,6 @@ class TrainingArguments(BaseModel):
     epoch: int
     batch_size: int
     model_storage_dir: str
-    tag2id_storage_name: str
     addtional_model_config: Optional[Dict]
     early_stop_count: Optional[int] = 3
 
@@ -73,8 +71,8 @@ class TrainingPipeline:
         )
         (
             self.train_texts,
-            self.train_tags,
             self.val_texts,
+            self.train_tags,
             self.val_tags,
         ) = train_test_split(texts, tags, test_size=self.arguments.split_rate)
         self.tag2id, self.id2tag = generate_tag_ids(tag_docs=tags)
@@ -91,16 +89,12 @@ class TrainingPipeline:
             is_split_into_words=True,
             return_offsets_mapping=True,
             padding=True,
-            # truncation=True,
-            # max_length=self.arguments.max_sequence_length,
         )
         self.val_encodings = tokenizer(
             self.val_texts,
             is_split_into_words=True,
             return_offsets_mapping=True,
             padding=True,
-            # truncation=True,
-            # max_length=self.arguments.max_sequence_length,
         )
         self.train_labels = self._encode_tags(self.train_tags, self.train_encodings)
         self.val_labels = self._encode_tags(self.val_tags, self.val_encodings)
@@ -192,12 +186,6 @@ class TrainingPipeline:
         self.classifier.load_state_dict(self.best_state_dict)
         self.classifier.save_pretrained(self.arguments.model_storage_dir)
 
-        # persist model parameters
-        tag2id_storage_path = Path(self.arguments.model_storage_dir).joinpath(
-            self.arguments.tag2id_storage_name
-        )
-        json.dump(self.tag2id, open(tag2id_storage_path, "w"), indent=4)
-
         logger.info(f"fine-tuned model stored to {self.arguments.model_storage_dir}")
 
     def _encode_tags(self, tags, encodings):
@@ -206,15 +194,18 @@ class TrainingPipeline:
         encoded_labels = []
         with tqdm(total=len(labels)) as pbar:
             for doc_labels, doc_offset in zip(labels, encodings.offset_mapping):
-                # create an empty array of -100
-                doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
-                arr_offset = np.array(doc_offset)
+                try:
+                    # create an empty array of -100
+                    doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
+                    arr_offset = np.array(doc_offset)
 
-                # set labels whose first offset position is 0 and the second is not 0
-                doc_enc_labels[
-                    (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
-                ] = doc_labels
-                encoded_labels.append(doc_enc_labels.tolist())
+                    # set labels whose first offset position is 0 and the second is not 0
+                    doc_enc_labels[
+                        (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
+                    ] = doc_labels
+                    encoded_labels.append(doc_enc_labels.tolist())
+                except ValueError as e:
+                    logger.warning(f"error encoding: {str(e)}")
                 pbar.update(1)
 
         return encoded_labels

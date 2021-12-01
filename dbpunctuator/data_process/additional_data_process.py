@@ -1,7 +1,7 @@
 import logging
 import re
 
-from plane import ASCII_WORD
+from plane import CJK
 
 logger = logging.getLogger(__name__)
 
@@ -36,18 +36,18 @@ def chinese_split(input):
     """
 
     regex = re.compile(
-        "(?P<%s>%s)" % (ASCII_WORD.name, ASCII_WORD.pattern), ASCII_WORD.flag
+        "(?P<%s>%s)" % (CJK.name, CJK.pattern), CJK.flag
     )
     result = ""
     start = 0
     try:
         for t in regex.finditer(input):
-            result += " ".join(
-                [char for char in list(input[start : t.start()]) if char != " "]
-            )
-            result += " " + input[t.start() : t.end()] + " "
+            result += input[start : t.start()]
+            result += " " + " ".join(
+                [char for char in list(input[t.start() : t.end()]) if char != " "]
+            ) + " "
             start = t.end()
-        result += " ".join([char for char in list(input[start:]) if char != " "])
+        result += input[start:]
     except TypeError:
         # mal row
         logger.warning(f"error parsing data: {input}")
