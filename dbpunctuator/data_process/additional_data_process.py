@@ -35,17 +35,19 @@ def chinese_split(input):
         input (string): text to apply the regex func to
     """
 
-    regex = re.compile(
-        "(?P<%s>%s)" % (CJK.name, CJK.pattern), CJK.flag
-    )
+    regex = re.compile("(?P<%s>%s)" % (CJK.name, CJK.pattern), CJK.flag)
     result = ""
     start = 0
     try:
         for t in regex.finditer(input):
             result += input[start : t.start()]
-            result += " " + " ".join(
-                [char for char in list(input[t.start() : t.end()]) if char != " "]
-            ) + " "
+            result += (
+                " "
+                + " ".join(
+                    [char for char in list(input[t.start() : t.end()]) if char != " "]
+                )
+                + " "
+            )
             start = t.end()
         result += input[start:]
     except TypeError:

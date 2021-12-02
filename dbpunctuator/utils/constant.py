@@ -20,7 +20,6 @@ DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP = {
     "CE": ("! ", True),
     "CL": ("：", True),
     "CD": ("、", False),
-    "P": (".", True),
 }
 
 
@@ -32,7 +31,6 @@ DEFAULT_ENGLISH_NER_MAPPING = {
     ":": "CO",
 }
 DEFAULT_CHINESE_NER_MAPPING = {
-    ".": "P",  # for latin specific situation in Chinese text
     "，": "CC",
     "。": "CP",
     "？": "CQ",

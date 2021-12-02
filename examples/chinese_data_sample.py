@@ -38,7 +38,6 @@ if __name__ == "__main__":
         special_cleaning_funcs=[normalize_puncs, chinese_split, remove_brackets_text],
     )
 
-
     generate_training_data(
         "./training_data/chinese_cleaned_text.txt",
         "./training_data/chinese_token_tag_data.txt",

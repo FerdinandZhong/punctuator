@@ -6,6 +6,9 @@ import numpy as np
 from tqdm import tqdm
 
 from dbpunctuator.utils import NORMAL_TOKEN_TAG
+from torch.utils.data import Dataset
+import torch
+
 
 PAD_TOKEN = "[PAD]"
 logger = logging.getLogger(__name__)
@@ -67,10 +70,15 @@ def unison_shuffled_copies(a, b):
     return a[p].tolist(), b[p].tolist()
 
 
-def train_test_split(tokens, tags, test_size=0.2, shuffle=True):
-    if shuffle:
-        tokens, tags = unison_shuffled_copies(
-            np.array(tokens, dtype=object), np.array(tags, dtype=object)
-        )
-    index = round(len(tokens) * (1 - test_size))
-    return tokens[:index], tokens[index:], tags[:index], tags[index:]
+class PunctuatorDataset(Dataset):
+    def __init__(self, encodings, labels):
+        self.encodings = encodings
+        self.labels = labels
+
+    def __getitem__(self, idx):
+        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+        item["labels"] = torch.tensor(self.labels[idx])
+        return item
+
+    def __len__(self):
+        return len(self.labels)

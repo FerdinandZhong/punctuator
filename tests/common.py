@@ -4,7 +4,7 @@ import pytest
 from dbpunctuator.data_process import remove_brackets_text
 from dbpunctuator.data_process.data_cleanning import dataframe_data_cleaning
 from dbpunctuator.data_process.data_process import process_line
-from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING, ALL_PUNCS
+from dbpunctuator.utils import ALL_PUNCS, DEFAULT_ENGLISH_NER_MAPPING
 
 punctuations = list(DEFAULT_ENGLISH_NER_MAPPING.keys())
 
@@ -35,10 +35,10 @@ def cleaned_data():
                 Saudi Arabia last week halted flights from seven southern African countries, mirroring similar moves by other governments, but travel links with North Africa have remained unaffected.
                 Omicron was first reported on Nov 24 in southern Africa, where infections have risen steeply. It has since spread to more than a dozen countries, many of which have imposed travel restrictions to try to seal themselves off.
                 Japan on Monday joined Israel and Morocco in saying it would completely close its borders.
-                """, # noqa: E501
+                """,  # noqa: E501
                 """
                 Rust native Transformer-based models implementation. Port of Hugging Face's Transformers library, using the tch-rs crate and pre-processing from rust-tokenizers. Supports multi-threaded tokenization and GPU inference. This repository exposes the model base architecture, task-specific heads (see below) and ready-to-use pipelines. Benchmarks are available at the end of this document.
-                """ # noqa: E501
+                """,  # noqa: E501
             ]
         }
     )

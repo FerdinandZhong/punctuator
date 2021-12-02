@@ -8,7 +8,7 @@ from tests.common import cleaned_data, processed_data  # noqa: F401
 testing_args = InferenceArguments(
     model_name_or_path="models/english_punctuator_2",
     tokenizer_name="distilbert-base-uncased",
-    tag2punctuator=DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP
+    tag2punctuator=DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP,
 )
 
 

@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from pydantic import BaseModel
 from torch._C import device  # noqa: F401
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import (
     AdamW,
@@ -15,9 +15,9 @@ from transformers import (
     DistilBertTokenizerFast,
 )
 
-from .dataset import generate_tag_ids, read_data, train_test_split
+from .dataset import generate_tag_ids, read_data, PunctuatorDataset
 
-# from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split
 
 logger = logging.getLogger(__name__)
 
@@ -281,30 +281,3 @@ class TrainingPipeline:
     def run(self):
         self.load_training_data().tokenize().generate_dataset().fine_tune().persist()
 
-
-class PunctuatorDataset(Dataset):
-    def __init__(self, encodings, labels):
-        self.encodings = encodings
-        self.labels = labels
-
-    def __getitem__(self, idx):
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        item["labels"] = torch.tensor(self.labels[idx])
-        return item
-
-    def __len__(self):
-        return len(self.labels)
-
-
-def encode_tags(labels, encodings):
-    encoded_labels = []
-    for doc_labels, doc_offset in zip(labels, encodings.offset_mapping):
-        # create an empty array of -100
-        doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
-        arr_offset = np.array(doc_offset)
-
-        # set labels whose first offset position is 0 and the second is not 0, only special tokens second is also 0
-        doc_enc_labels[(arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)] = doc_labels
-        encoded_labels.append(doc_enc_labels.tolist())
-
-    return encoded_labels
