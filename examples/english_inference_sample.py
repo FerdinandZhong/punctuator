@@ -49,8 +49,8 @@ long_test_text = [
 
 if __name__ == "__main__":
     args = InferenceArguments(
-        model_name_or_path="models/english_punctuator_2",
-        tokenizer_name="distilbert-base-uncased",
+        model_name_or_path="Qishuai/distilbert_punctuator_en",
+        tokenizer_name="Qishuai/distilbert_punctuator_en",
         tag2punctuator=DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP,
     )
 

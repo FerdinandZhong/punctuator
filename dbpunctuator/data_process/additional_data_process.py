@@ -40,7 +40,7 @@ def chinese_split(input):
     start = 0
     try:
         for t in regex.finditer(input):
-            result += input[start : t.start()]
+            result += input[start : t.start()].strip()
             result += (
                 " "
                 + " ".join(
@@ -49,8 +49,8 @@ def chinese_split(input):
                 + " "
             )
             start = t.end()
-        result += input[start:]
-    except TypeError:
+        result += input[start:].strip()
+    except TypeError as err:
         # mal row
-        logger.warning(f"error parsing data: {input}")
+        logger.warning(f"parsing data: {input} with error: {str(err)}")
     return result

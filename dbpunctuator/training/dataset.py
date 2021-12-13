@@ -3,12 +3,11 @@ from random import randint
 from typing import List
 
 import numpy as np
+import torch
+from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from dbpunctuator.utils import NORMAL_TOKEN_TAG
-from torch.utils.data import Dataset
-import torch
-
 
 PAD_TOKEN = "[PAD]"
 logger = logging.getLogger(__name__)
@@ -33,6 +32,12 @@ def read_data(file_path, min_sequence_length, max_sequence_length) -> List[List]
                 target_sequence_length = randint(
                     min_sequence_length, max_sequence_length
                 )
+            if line == "\n":
+                token_docs.append(token_doc)
+                tag_docs.append(tag_doc)
+                line_index = 0
+                pbar.update(len(token_doc))
+                continue
             processed_line = read_line(line)
             try:
                 token_doc.append(processed_line[0])

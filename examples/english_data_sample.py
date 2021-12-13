@@ -1,3 +1,7 @@
+from itertools import zip_longest
+
+import pandas as pd
+
 from dbpunctuator.data_process import (
     cleanup_data_from_csv,
     generate_training_data,
@@ -5,14 +9,66 @@ from dbpunctuator.data_process import (
 )
 from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING
 
+
+def lower_input(input):
+    return input.lower()
+
+
+def merge_data(whole_data_path, *tokens_data_paths):
+    all_lines = []
+    with open(whole_data_path, "w+") as whole_data_file:
+        for cleaned_data_path in tokens_data_paths:
+            with open(cleaned_data_path, "r") as data_file:
+                all_lines.append(data_file.readlines())
+        for lines in zip_longest(*all_lines):
+            for line in lines:
+                if line:
+                    whole_data_file.write(line)
+
+
 if __name__ == "__main__":
+    dataframe = pd.read_csv("./original_data/bbc-news-data.csv", sep="\t").dropna(
+        subset=["content"]
+    )
     cleanup_data_from_csv(
-        "./original_data/ted_talks_en.csv",
-        "transcript",
-        "./training_data/english_cleaned_text.txt",
+        dataframe,
+        "content",
+        "./training_data/english_cleaned_bbc_news_text.txt",
         ner_mapping=DEFAULT_ENGLISH_NER_MAPPING,
         additional_to_remove=["♫"],
-        special_cleaning_funcs=[remove_brackets_text],
+        special_cleaning_funcs=[remove_brackets_text, lower_input],
+    )
+
+    dataframe = (
+        pd.read_csv("./original_data/news_summary_more.csv")
+        .dropna(subset=["text"])
+        .sample(20000)
+    )
+    cleanup_data_from_csv(
+        dataframe,
+        "text",
+        "./training_data/english_cleaned_news_text.txt",
+        ner_mapping=DEFAULT_ENGLISH_NER_MAPPING,
+        additional_to_remove=["♫"],
+        special_cleaning_funcs=[remove_brackets_text, lower_input],
+    )
+    dataframe = pd.read_csv("./original_data/ted_talks_en.csv").dropna(
+        subset=["transcript"]
+    )
+    cleanup_data_from_csv(
+        dataframe,
+        "transcript",
+        "./training_data/english_cleaned_ted_text.txt",
+        ner_mapping=DEFAULT_ENGLISH_NER_MAPPING,
+        additional_to_remove=["♫"],
+        special_cleaning_funcs=[remove_brackets_text, lower_input],
+    )
+
+    merge_data(
+        "./training_data/english_cleaned_text.txt",
+        "./training_data/english_cleaned_bbc_news_text.txt",
+        "./training_data/english_cleaned_news_text.txt",
+        "./training_data/english_cleaned_ted_text.txt",
     )
 
     generate_training_data(

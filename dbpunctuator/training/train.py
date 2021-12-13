@@ -5,6 +5,7 @@ from typing import Dict, Optional
 import numpy as np
 import torch
 from pydantic import BaseModel
+from sklearn.model_selection import train_test_split
 from torch._C import device  # noqa: F401
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -15,9 +16,7 @@ from transformers import (
     DistilBertTokenizerFast,
 )
 
-from .dataset import generate_tag_ids, read_data, PunctuatorDataset
-
-from sklearn.model_selection import train_test_split
+from .dataset import PunctuatorDataset, generate_tag_ids, read_data
 
 logger = logging.getLogger(__name__)
 
@@ -27,18 +26,20 @@ class TrainingArguments(BaseModel):
 
     Args:
         data_file_path(str): path of training data
-        model_name(str): name or path of pre-trained model
+        model_name_or_path(str): name or path of pre-trained model
         tokenizer_name(str): name of pretrained tokenizer
         split_rate(float): train and validation split rate
-        sequence_length(int): sequence length of one sample
+        min_sequence_length(int): min sequence length of one sample
+        max_sequence_length(int): max sequence length of one sample
         epoch(int): number of epoch
         batch_size(int): batch size
         model_storage_dir(str): fine-tuned model storage path
         addtional_model_config(Optional[Dict]): additional configuration for model
+        early_stop_count(int): after how many epochs to early stop training if valid loss not become smaller. default 3 # noqa: E501
     """
 
     data_file_path: str
-    model_name: str
+    model_name_or_path: str
     tokenizer_name: str
     split_rate: float
     min_sequence_length: int
@@ -69,6 +70,7 @@ class TrainingPipeline:
             self.arguments.min_sequence_length,
             self.arguments.max_sequence_length,
         )
+        logger.info(f"data sample: {texts[0]}")
         (
             self.train_texts,
             self.val_texts,
@@ -81,6 +83,13 @@ class TrainingPipeline:
 
     def tokenize(self):
         logger.info("tokenize data")
+        self.model_config = DistilBertConfig.from_pretrained(
+            self.arguments.model_name_or_path,
+            label2id=self.tag2id,
+            id2label=self.id2tag,
+            num_labels=len(self.tag2id),
+            **self.arguments.addtional_model_config,
+        )
         tokenizer = DistilBertTokenizerFast.from_pretrained(
             self.arguments.tokenizer_name
         )
@@ -114,15 +123,8 @@ class TrainingPipeline:
 
     def fine_tune(self):
         logger.info("start fine tune")
-        self.model_config = DistilBertConfig.from_pretrained(
-            self.arguments.model_name,
-            label2id=self.tag2id,
-            id2label=self.id2tag,
-            num_labels=len(self.tag2id),
-            **self.arguments.addtional_model_config,
-        )
         self.classifier = DistilBertForTokenClassification.from_pretrained(
-            self.arguments.model_name,
+            self.arguments.model_name_or_path,
             config=self.model_config,
         )
         self.classifier.to(self.device)
@@ -280,4 +282,3 @@ class TrainingPipeline:
 
     def run(self):
         self.load_training_data().tokenize().generate_dataset().fine_tune().persist()
-

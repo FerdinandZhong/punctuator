@@ -9,15 +9,19 @@ from dbpunctuator.utils import ALL_PUNCS, DEFAULT_ENGLISH_NER_MAPPING
 punctuations = list(DEFAULT_ENGLISH_NER_MAPPING.keys())
 
 
+def lower(input):
+    return input.lower()
+
+
 @pytest.fixture(scope="module")
 def cleaned_data():
     test_df = pd.DataFrame(
         {
             "test": [
-                "Good morning. How are you?(Laughter)It's been great, hasn't it?",  # noqa: E501
-                "This is a test without special character.",
-                "'Hello', who @ are * you (music)?",
-                "i don't know what's going on...",
+                """
+                At a recent networking event, senior managers who’d been downsized out of high-paying corporate jobs took turns telling what they had done before and what they were looking for next. Person after person stood up and recounted a laundry list of credentials and jobs, in chronological order. Many felt compelled to begin with their first job, some even with their place of birth. The accounting was meticulous.
+                Most people spent their allotted two minutes (and lost the attention of those around them) before they even reached the punch line—the description of what they were seeking. Those who did leave time to wrap up tended merely to list the four or five (disparate) things they might be interested in pursuing next. In the feedback sessions that followed each round of presentations, these “fact tellers” were hard to help. The people listening couldn’t readily understand how their knowledge and contacts might bear upon the teller’s situation. Even worse, they didn’t feel compelled to try very hard.
+                """,  # noqa: E501
                 """
                 We shot the scene without a single rehearsal", beatty said.
                 As usual the director insisted on a rehearsal, but I convinced him the best opportunity for a realistic battle would be when the two animals first met.
@@ -51,6 +55,7 @@ def cleaned_data():
         kept_punctuations,
         removed_punctuations,
         remove_brackets_text,
+        lower,
     )
 
     return cleaned_df["test"].tolist()

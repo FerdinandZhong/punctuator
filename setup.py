@@ -12,7 +12,7 @@ with open(path.join(here, "requirements.txt"), encoding="utf-8") as f:
 
 setup(
     name="distilbert-punctuator",
-    version="0.1.1",
+    version="0.2.0",
     description="A small seq2seq punctuator tool based on DistilBERT",
     long_description=readme,
     long_description_content_type="text/markdown",
@@ -32,13 +32,15 @@ setup(
     install_requires=requires,
     extras_require={
         "data_process": ["pandas>=1.1.0"],
+        "training": ["scikit-learn>=0.23.2"],
         "dev": [
             "pytest>=6",
             "flake8>=3.8",
             "black>=20.8b1",
             "isort>=5.6",
             "autoflake>=1.4",
-            "pandas>=1.1.0"
+            "pandas>=1.1.0",
+            "scikit-learn>=0.23.2"
         ],
     },
     zip_safe=False,
