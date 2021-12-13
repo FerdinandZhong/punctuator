@@ -12,7 +12,7 @@ clean:
 	find . -name '__pycache__' -exec rm -rf {} +
 
 package: clean
-	python3.7 setup.py sdist bdist_wheel
+	python setup.py sdist bdist_wheel
 
 format:
 	autoflake --in-place --remove-all-unused-imports --recursive ${PY_SOURCE_FILES}
