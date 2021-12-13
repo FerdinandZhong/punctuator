@@ -28,17 +28,17 @@ Component for providing a training pipeline for fine-tuning a pretrained `Distil
 ### Training_arguments:
 Arguments required for the training pipeline.
 
-`data_file_path(str)`: path of training data
-`model_name_or_path(str)`: name or path of pre-trained model
-`tokenizer_name(str)`: name of pretrained tokenizer
-`split_rate(float)`: train and validation split rate
-`min_sequence_length(int)`: min sequence length of one sample
-`max_sequence_length(int)`: max sequence length of one sample
-`epoch(int)`: number of epoch
-`batch_size(int)`: batch size
-`model_storage_path(str)`: fine-tuned model storage path
-`addtional_model_config(Optional[Dict])`: additional configuration for model
-`early_stop_count(int)`: after how many epochs to early stop training if valid loss not become smaller. default 3
+- `data_file_path(str)`: path of training data
+- `model_name_or_path(str)`: name or path of pre-trained model
+- `tokenizer_name(str)`: name of pretrained tokenizer
+- `split_rate(float)`: train and validation split rate
+- `min_sequence_length(int)`: min sequence length of one sample
+- `max_sequence_length(int)`: max sequence length of one sample
+- `epoch(int)`: number of epoch
+- `batch_size(int)`: batch size
+- `model_storage_path(str)`: fine-tuned model storage path
+- `addtional_model_config(Optional[Dict])`: additional configuration for model
+- `early_stop_count(int)`: after how many epochs to early stop training if valid loss not become smaller. default 3
 
 ## Validate
 Validation of fine-tuned model
@@ -47,13 +47,13 @@ Validation of fine-tuned model
 `examples/train_sample.py`
 
 ### Validation_arguments:
-`data_file_path(str)`: path of validation data
-`model_name_or_path(str)`: name or path of fine-tuned model
-`tokenizer_name(str)`: name of tokenizer
-`min_sequence_length(int)`: min sequence length of one sample
-`max_sequence_length(int)`: max sequence length of one sample
-`batch_size(int)`: batch size
-`tag2id_storage_path(Optional[str])`: tag2id storage path. Default one is from model config.
+- `data_file_path(str)`: path of validation data
+- `model_name_or_path(str)`: name or path of fine-tuned model
+- `tokenizer_name(str)`: name of tokenizer
+- `min_sequence_length(int)`: min sequence length of one sample
+- `max_sequence_length(int)`: max sequence length of one sample
+- `batch_size(int)`: batch size
+- `tag2id_storage_path(Optional[str])`: tag2id storage path. Default one is from model config.
 
 ## Inference
 Component for providing an inference interface for user to use punctuator.
@@ -77,27 +77,29 @@ There is a `graceful shutdown` methodology for the punctuator, hence user dosen'
 ### Inference_arguments
 Arguments required for the inference pipeline.
 
-`model_name_or_path(str)`: name or path of pre-trained model
-`tokenizer_name(str)`: name of pretrained tokenizer
-`tag2punctuator(Dict[str, tuple])`: tag to punctuator mapping.
-            dbpunctuator.utils provides two mappings for English and Chinese
-                NORMAL_TOKEN_TAG = "O"
-                DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP = {
-                    NORMAL_TOKEN_TAG: ("", False),
-                    "COMMA": (",", False),
-                    "PERIOD": (".", True),
-                    "QUESTIONMARK": ("?", True),
-                    "EXLAMATIONMARK": ("!", True),
-                }
+- `model_name_or_path(str)`: name or path of pre-trained model
+- `tokenizer_name(str)`: name of pretrained tokenizer
+- `tag2punctuator(Dict[str, tuple])`: tag to punctuator mapping.
+   dbpunctuator.utils provides two default mappings for English and Chinese
+   ```python
+   NORMAL_TOKEN_TAG = "O"
+   DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP = {
+       NORMAL_TOKEN_TAG: ("", False),
+       "COMMA": (",", False),
+       "PERIOD": (".", True),
+       "QUESTIONMARK": ("?", True),
+       "EXLAMATIONMARK": ("!", True),
+   }
 
-                DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP = {
-                    NORMAL_TOKEN_TAG: ("", False),
-                    "C_COMMA": ("，", False),
-                    "C_PERIOD": ("。", True),
-                    "C_QUESTIONMARK": ("? ", True),
-                    "C_EXLAMATIONMARK": ("! ", True),
-                    "C_COLON": ("：", True),
-                    "C_DUNHAO": ("、", False),
-                }
-            for own fine-tuned model with different tags, pass in your own mapping
-`tag2id_storage_path(Optional[str])`: tag2id storage path. Default one is from model config. Pass in this argument if your model doesn't have a tag2id inside config
+   DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP = {
+       NORMAL_TOKEN_TAG: ("", False),
+       "C_COMMA": ("，", False),
+       "C_PERIOD": ("。", True),
+       "C_QUESTIONMARK": ("? ", True),
+       "C_EXLAMATIONMARK": ("! ", True),
+       "C_COLON": ("：", True),
+       "C_DUNHAO": ("、", False),
+   }
+   ```
+   for own fine-tuned model with different tags, pass in your own mapping
+- `tag2id_storage_path(Optional[str])`: tag2id storage path. Default one is from model config. Pass in this argument if your model doesn't have a tag2id inside config
