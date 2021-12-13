@@ -10,7 +10,6 @@ from plane.pattern import EMAIL, TELEPHONE
 from pydantic import BaseModel
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
 
-from dbpunctuator.data_process import chinese_split
 from dbpunctuator.utils import (
     CURRENCY,
     CURRENCY_TOKEN,
@@ -20,6 +19,7 @@ from dbpunctuator.utils import (
     TELEPHONE_TOKEN,
     URL,
     URL_TOKEN,
+    chinese_split,
     is_ascii,
 )
 

@@ -1,3 +1,8 @@
+from .additional_data_process import (
+    chinese_split,
+    keep_only_latin_characters,
+    remove_brackets_text,
+)
 from .constant import (
     ALL_PUNCS,
     CURRENCY,
@@ -32,4 +37,7 @@ __all__ = [
     "CURRENCY_TOKEN",
     "NUMBER_TOKEN",
     "NUMBER",
+    "remove_brackets_text",
+    "keep_only_latin_characters",
+    "chinese_split",
 ]

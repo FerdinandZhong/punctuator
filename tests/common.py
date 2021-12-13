@@ -1,10 +1,13 @@
 import pandas as pd
 import pytest
 
-from dbpunctuator.data_process import remove_brackets_text
 from dbpunctuator.data_process.data_cleanning import dataframe_data_cleaning
 from dbpunctuator.data_process.data_process import process_line
-from dbpunctuator.utils import ALL_PUNCS, DEFAULT_ENGLISH_NER_MAPPING
+from dbpunctuator.utils import (
+    ALL_PUNCS,
+    DEFAULT_ENGLISH_NER_MAPPING,
+    remove_brackets_text,
+)
 
 punctuations = list(DEFAULT_ENGLISH_NER_MAPPING.keys())
 

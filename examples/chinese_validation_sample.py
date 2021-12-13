@@ -3,14 +3,13 @@ import unicodedata
 
 from plane import CJK
 
-from dbpunctuator.data_process import (
+from dbpunctuator.data_process import clean_up_data_from_txt, generate_training_data
+from dbpunctuator.training import ValidationArguments, ValidationPipeline
+from dbpunctuator.utils import (
+    DEFAULT_CHINESE_NER_MAPPING,
     chinese_split,
-    clean_up_data_from_txt,
-    generate_training_data,
     remove_brackets_text,
 )
-from dbpunctuator.training import ValidationArguments, ValidationPipeline
-from dbpunctuator.utils import DEFAULT_CHINESE_NER_MAPPING
 
 
 def remove_special_chars(input):

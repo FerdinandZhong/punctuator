@@ -2,12 +2,8 @@ from itertools import zip_longest
 
 import pandas as pd
 
-from dbpunctuator.data_process import (
-    cleanup_data_from_csv,
-    generate_training_data,
-    remove_brackets_text,
-)
-from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING
+from dbpunctuator.data_process import cleanup_data_from_csv, generate_training_data
+from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING, remove_brackets_text
 
 
 def lower_input(input):

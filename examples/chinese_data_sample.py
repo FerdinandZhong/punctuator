@@ -3,12 +3,8 @@ from itertools import zip_longest
 
 from plane import CJK
 
-from dbpunctuator.data_process import (
-    clean_up_data_from_txt,
-    generate_training_data,
-    remove_brackets_text,
-)
-from dbpunctuator.utils import DEFAULT_CHINESE_NER_MAPPING
+from dbpunctuator.data_process import clean_up_data_from_txt, generate_training_data
+from dbpunctuator.utils import DEFAULT_CHINESE_NER_MAPPING, remove_brackets_text
 
 
 # self defined special cleaning func
