@@ -2,10 +2,10 @@ import re
 
 import pytest
 
-from dbpunctuator.utils.constant import DEFAULT_NER_MAPPING
+from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING, NORMAL_TOKEN_TAG
 from tests.common import cleaned_data, processed_data  # noqa: F401
 
-punctuations = list(DEFAULT_NER_MAPPING.keys())
+punctuations = list(DEFAULT_ENGLISH_NER_MAPPING.keys())
 
 
 @pytest.mark.usefixtures("cleaned_data")
@@ -25,5 +25,5 @@ def test_training_data_generation(processed_data):  # noqa: F811
             if last_token_is_punct:
                 assert token not in punctuations
             if token in punctuations:
-                assert tag != "O"
+                assert tag != NORMAL_TOKEN_TAG
                 last_token_is_punct = True

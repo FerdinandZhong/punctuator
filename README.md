@@ -4,8 +4,11 @@
 Distilbert-punctuator is a python package provides a bert-based punctuator (fine-tuned model of `pretrained huggingface DistilBertForTokenClassification`) with following three components:
 
 * **data process**: funcs for processing user's data to prepare for training. If user perfer to fine-tune the model with his/her own data.
-* **training**: training pipeline. User can fine-tune his/her own punctuator with the pipeline
-* **inference**: easy-to-use interface for user to use trained punctuator. If user doesn't want to train a punctuator himself/herself, a pre-fined-tuned model from huggingface model hub `Qishuai/distilbert_punctuator_en` can be used when launching the inference
+* **training**: training pipeline and doing validation. User can fine-tune his/her own punctuator with the pipeline
+* **inference**: easy-to-use interface for user to use trained punctuator.
+* If user doesn't want to train a punctuator himself/herself, two pre-fined-tuned model from huggingface model hub
+  * `Qishuai/distilbert_punctuator_en` 📎 [Model details](https://huggingface.co/Qishuai/distilbert_punctuator_en)
+  * `Qishuai/distilbert_punctuator_zh` 📎 [Model details](https://huggingface.co/Qishuai/distilbert_punctuator_zh)
 
 
 ## Data Process
@@ -20,21 +23,37 @@ The package is providing a simple pipeline for you to generate `NER` format trai
 Component for providing a training pipeline for fine-tuning a pretrained `DistilBertForTokenClassification` model from `huggingface`.
 
 ### Example
-`examples/train_sample.py`
+`examples/english_train_sample.py`
 
 ### Training_arguments:
 Arguments required for the training pipeline.
 
 `data_file_path(str)`: path of training data
-`model_name(str)`: name or path of pre-trained model
+`model_name_or_path(str)`: name or path of pre-trained model
 `tokenizer_name(str)`: name of pretrained tokenizer
 `split_rate(float)`: train and validation split rate
-`sequence_length(int)`: sequence length of one sample
+`min_sequence_length(int)`: min sequence length of one sample
+`max_sequence_length(int)`: max sequence length of one sample
 `epoch(int)`: number of epoch
 `batch_size(int)`: batch size
 `model_storage_path(str)`: fine-tuned model storage path
-`tag2id_storage_path(str)`: tag2id storage path
 `addtional_model_config(Optional[Dict])`: additional configuration for model
+`early_stop_count(int)`: after how many epochs to early stop training if valid loss not become smaller. default 3
+
+## Validate
+Validation of fine-tuned model
+
+### Example
+`examples/train_sample.py`
+
+### Validation_arguments:
+`data_file_path(str)`: path of validation data
+`model_name_or_path(str)`: name or path of fine-tuned model
+`tokenizer_name(str)`: name of tokenizer
+`min_sequence_length(int)`: min sequence length of one sample
+`max_sequence_length(int)`: max sequence length of one sample
+`batch_size(int)`: batch size
+`tag2id_storage_path(Optional[str])`: tag2id storage path. Default one is from model config.
 
 ## Inference
 Component for providing an inference interface for user to use punctuator.
@@ -60,6 +79,25 @@ Arguments required for the inference pipeline.
 
 `model_name_or_path(str)`: name or path of pre-trained model
 `tokenizer_name(str)`: name of pretrained tokenizer
-`tag2id_storage_path(Optional[str])`: tag2id storage path. If None, DEFAULT_TAG_ID will be used.
+`tag2punctuator(Dict[str, tuple])`: tag to punctuator mapping.
+            dbpunctuator.utils provides two mappings for English and Chinese
+                NORMAL_TOKEN_TAG = "O"
+                DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP = {
+                    NORMAL_TOKEN_TAG: ("", False),
+                    "COMMA": (",", False),
+                    "PERIOD": (".", True),
+                    "QUESTIONMARK": ("?", True),
+                    "EXLAMATIONMARK": ("!", True),
+                }
 
-`DEFAULT_TAG_ID`: {"E": 0, "O": 1, "P": 2, "C": 3, "Q": 4}
+                DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP = {
+                    NORMAL_TOKEN_TAG: ("", False),
+                    "C_COMMA": ("，", False),
+                    "C_PERIOD": ("。", True),
+                    "C_QUESTIONMARK": ("? ", True),
+                    "C_EXLAMATIONMARK": ("! ", True),
+                    "C_COLON": ("：", True),
+                    "C_DUNHAO": ("、", False),
+                }
+            for own fine-tuned model with different tags, pass in your own mapping
+`tag2id_storage_path(Optional[str])`: tag2id storage path. Default one is from model config. Pass in this argument if your model doesn't have a tag2id inside config

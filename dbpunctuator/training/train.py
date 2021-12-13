@@ -1,4 +1,3 @@
-import json
 import logging
 import time
 from typing import Dict, Optional
@@ -6,8 +5,9 @@ from typing import Dict, Optional
 import numpy as np
 import torch
 from pydantic import BaseModel
+from sklearn.model_selection import train_test_split
 from torch._C import device  # noqa: F401
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import (
     AdamW,
@@ -16,7 +16,7 @@ from transformers import (
     DistilBertTokenizerFast,
 )
 
-from .dataset import generate_tag_ids, read_data, train_test_split
+from .dataset import PunctuatorDataset, generate_tag_ids, read_data
 
 logger = logging.getLogger(__name__)
 
@@ -26,27 +26,29 @@ class TrainingArguments(BaseModel):
 
     Args:
         data_file_path(str): path of training data
-        model_name(str): name or path of pre-trained model
+        model_name_or_path(str): name or path of pre-trained model
         tokenizer_name(str): name of pretrained tokenizer
         split_rate(float): train and validation split rate
-        sequence_length(int): sequence length of one sample
+        min_sequence_length(int): min sequence length of one sample
+        max_sequence_length(int): max sequence length of one sample
         epoch(int): number of epoch
         batch_size(int): batch size
-        model_storage_path(str): fine-tuned model storage path
-        tag2id_storage_path(str): tag2id storage path
+        model_storage_dir(str): fine-tuned model storage path
         addtional_model_config(Optional[Dict]): additional configuration for model
+        early_stop_count(int): after how many epochs to early stop training if valid loss not become smaller. default 3 # noqa: E501
     """
 
     data_file_path: str
-    model_name: str
+    model_name_or_path: str
     tokenizer_name: str
     split_rate: float
-    sequence_length: int
+    min_sequence_length: int
+    max_sequence_length: int
     epoch: int
     batch_size: int
-    model_storage_path: str
-    tag2id_storage_path: str
+    model_storage_dir: str
     addtional_model_config: Optional[Dict]
+    early_stop_count: Optional[int] = 3
 
 
 class TrainingPipeline:
@@ -64,12 +66,15 @@ class TrainingPipeline:
     def load_training_data(self):
         logger.info("load training data")
         texts, tags = read_data(
-            self.arguments.data_file_path, self.arguments.sequence_length
+            self.arguments.data_file_path,
+            self.arguments.min_sequence_length,
+            self.arguments.max_sequence_length,
         )
+        logger.info(f"data sample: {texts[0]}")
         (
             self.train_texts,
-            self.train_tags,
             self.val_texts,
+            self.train_tags,
             self.val_tags,
         ) = train_test_split(texts, tags, test_size=self.arguments.split_rate)
         self.tag2id, self.id2tag = generate_tag_ids(tag_docs=tags)
@@ -78,6 +83,13 @@ class TrainingPipeline:
 
     def tokenize(self):
         logger.info("tokenize data")
+        self.model_config = DistilBertConfig.from_pretrained(
+            self.arguments.model_name_or_path,
+            label2id=self.tag2id,
+            id2label=self.id2tag,
+            num_labels=len(self.tag2id),
+            **self.arguments.addtional_model_config,
+        )
         tokenizer = DistilBertTokenizerFast.from_pretrained(
             self.arguments.tokenizer_name
         )
@@ -86,14 +98,12 @@ class TrainingPipeline:
             is_split_into_words=True,
             return_offsets_mapping=True,
             padding=True,
-            truncation=True,
         )
         self.val_encodings = tokenizer(
             self.val_texts,
             is_split_into_words=True,
             return_offsets_mapping=True,
             padding=True,
-            truncation=True,
         )
         self.train_labels = self._encode_tags(self.train_tags, self.train_encodings)
         self.val_labels = self._encode_tags(self.val_tags, self.val_encodings)
@@ -113,15 +123,9 @@ class TrainingPipeline:
 
     def fine_tune(self):
         logger.info("start fine tune")
-        config = DistilBertConfig.from_pretrained(
-            self.arguments.model_name,
-            label2id=self.tag2id,
-            id2label=self.id2tag,
-            num_labels=len(self.tag2id),
-            **self.arguments.addtional_model_config,
-        )
         self.classifier = DistilBertForTokenClassification.from_pretrained(
-            self.arguments.model_name, config=config
+            self.arguments.model_name_or_path,
+            config=self.model_config,
         )
         self.classifier.to(self.device)
 
@@ -134,6 +138,7 @@ class TrainingPipeline:
         optim = AdamW(self.classifier.parameters(), lr=5e-5)
 
         best_valid_loss = 1
+        no_improvement_count = 0
         with tqdm(total=self.arguments.epoch) as pbar:
             for epoch in range(self.arguments.epoch):
                 pbar.set_description(f"Processing epoch: {epoch + 1}")
@@ -149,10 +154,6 @@ class TrainingPipeline:
 
                 epoch_mins, epoch_secs = self._epoch_time(start_time, end_time)
 
-                if val_loss < best_valid_loss:
-                    best_valid_loss = val_loss
-                    self.best_state_dict = self.classifier.state_dict()
-
                 logger.info(
                     f"Epoch: {epoch + 1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s"
                 )
@@ -164,6 +165,17 @@ class TrainingPipeline:
                 )
                 pbar.update(1)
 
+                if val_loss < best_valid_loss:
+                    best_valid_loss = val_loss
+                    self.best_state_dict = self.classifier.state_dict()
+                else:
+                    no_improvement_count += 1
+                    if no_improvement_count >= self.arguments.early_stop_count:
+                        logger.info(
+                            f"No improvement for past {no_improvement_count} epochs, early stop training."
+                        )
+                        return self
+
             logger.info("fine-tune finished")
 
         return self
@@ -174,12 +186,9 @@ class TrainingPipeline:
         logger.info("persist fine-tuned model")
 
         self.classifier.load_state_dict(self.best_state_dict)
-        self.classifier.save_pretrained(self.arguments.model_storage_path)
+        self.classifier.save_pretrained(self.arguments.model_storage_dir)
 
-        # persist model parameters
-        json.dump(self.tag2id, open(self.arguments.tag2id_storage_path, "w"), indent=4)
-
-        logger.info(f"fine-tuned model stored to {self.arguments.model_storage_path}")
+        logger.info(f"fine-tuned model stored to {self.arguments.model_storage_dir}")
 
     def _encode_tags(self, tags, encodings):
         logger.info("encoding tags")
@@ -187,15 +196,18 @@ class TrainingPipeline:
         encoded_labels = []
         with tqdm(total=len(labels)) as pbar:
             for doc_labels, doc_offset in zip(labels, encodings.offset_mapping):
-                # create an empty array of -100
-                doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
-                arr_offset = np.array(doc_offset)
+                try:
+                    # create an empty array of -100
+                    doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
+                    arr_offset = np.array(doc_offset)
 
-                # set labels whose first offset position is 0 and the second is not 0
-                doc_enc_labels[
-                    (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
-                ] = doc_labels
-                encoded_labels.append(doc_enc_labels.tolist())
+                    # set labels whose first offset position is 0 and the second is not 0
+                    doc_enc_labels[
+                        (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
+                    ] = doc_labels
+                    encoded_labels.append(doc_enc_labels.tolist())
+                except ValueError as e:
+                    logger.warning(f"error encoding: {str(e)}")
                 pbar.update(1)
 
         return encoded_labels
@@ -232,6 +244,12 @@ class TrainingPipeline:
                     optim.step()
 
                 pbar.update(1)
+                pbar.set_postfix(
+                    {
+                        "Last_loss": f"{loss:.2f}",
+                        "Avg_cum_loss": f"{epoch_loss/steps:.2f}",
+                    }
+                )
 
         return epoch_loss / steps, epoch_acc / steps
 
@@ -264,31 +282,3 @@ class TrainingPipeline:
 
     def run(self):
         self.load_training_data().tokenize().generate_dataset().fine_tune().persist()
-
-
-class PunctuatorDataset(Dataset):
-    def __init__(self, encodings, labels):
-        self.encodings = encodings
-        self.labels = labels
-
-    def __getitem__(self, idx):
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        item["labels"] = torch.tensor(self.labels[idx])
-        return item
-
-    def __len__(self):
-        return len(self.labels)
-
-
-def encode_tags(labels, encodings):
-    encoded_labels = []
-    for doc_labels, doc_offset in zip(labels, encodings.offset_mapping):
-        # create an empty array of -100
-        doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
-        arr_offset = np.array(doc_offset)
-
-        # set labels whose first offset position is 0 and the second is not 0, only special tokens second is also 0
-        doc_enc_labels[(arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)] = doc_labels
-        encoded_labels.append(doc_enc_labels.tolist())
-
-    return encoded_labels

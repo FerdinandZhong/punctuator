@@ -1,7 +1,7 @@
 PY_SOURCE_FILES=dbpunctuator/ examples/ tests/ #this can be modified to include more files
 
 install: package
-	pip install -e .[dev]
+	pip install -e .[dev,data_process,training]
 
 test:
 	pytest tests -vv -s

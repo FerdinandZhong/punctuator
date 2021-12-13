@@ -1,6 +1,9 @@
 import logging
 import sys
 
+version = sys.version_info
+above_36 = version.major >= 3 and version.minor > 6
+
 
 class ColorfulFormatter(logging.Formatter):
     grey = "\x1b[38;21m"
@@ -47,3 +50,15 @@ def recv_all(conn, length):
         mv = mv[packet:]
         size += packet
     return buffer
+
+
+def is_ascii(text):
+    if above_36:
+        return text.isascii()
+    else:
+        try:
+            text.encode("ascii")
+        except UnicodeEncodeError:
+            return False
+        else:
+            return True

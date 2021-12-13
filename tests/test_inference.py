@@ -2,11 +2,13 @@ import numpy as np
 import pytest
 
 from dbpunctuator.inference import Inference, InferenceArguments
+from dbpunctuator.utils import DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP
 from tests.common import cleaned_data, processed_data  # noqa: F401
 
 testing_args = InferenceArguments(
     model_name_or_path="Qishuai/distilbert_punctuator_en",
-    tokenizer_name="distilbert-base-uncased",
+    tokenizer_name="Qishuai/distilbert_punctuator_en",
+    tag2punctuator=DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP,
 )
 
 
