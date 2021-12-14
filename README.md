@@ -9,6 +9,16 @@ Distilbert-punctuator is a python package provides a bert-based punctuator (fine
 * If user doesn't want to train a punctuator himself/herself, two pre-fined-tuned model from huggingface model hub
   * `Qishuai/distilbert_punctuator_en` 📎 [Model details](https://huggingface.co/Qishuai/distilbert_punctuator_en)
   * `Qishuai/distilbert_punctuator_zh` 📎 [Model details](https://huggingface.co/Qishuai/distilbert_punctuator_zh)
+* model examples in huggingface web page.
+  * English model
+  <figure>
+    <img src="./docs/static/english_model_example.png" width="600" />
+  </figure>
+
+  * Simplified Chinese model
+  <figure>
+    <img src="./docs/static/chinese_model_example.png" width="600" />
+  </figure>
 
 
 ## Data Process
