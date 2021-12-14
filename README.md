@@ -20,6 +20,13 @@ Distilbert-punctuator is a python package provides a bert-based punctuator (fine
     <img src="./docs/static/chinese_model_example.png" width="600" />
   </figure>
 
+## Installation
+* Installing the package from pypi: `pip install distilbert-punctuator` for directly usage of punctuator.
+* Installing the package with option to do data processing `pip install distilbert-punctuator[data_process]`.
+* Installing the package with option to train and validate your own model `pip install distilbert-punctuator[training]`
+* For development and contribution
+  * clone the repo
+  * `make install`
 
 ## Data Process
 Component for pre-processing the training data. To use this component, please install as `pip install distilbert-punctuator[data_process]`
