@@ -8,12 +8,14 @@ Distilbert-punctuator is a python package provides a bert-based punctuator (fine
 * **inference**: easy-to-use interface for user to use trained punctuator.
 * If user doesn't want to train a punctuator himself/herself, two pre-fined-tuned model from huggingface model hub
   * `Qishuai/distilbert_punctuator_en` 📎 [Model details](https://huggingface.co/Qishuai/distilbert_punctuator_en)
-  model example in huggingface web page.
+  * `Qishuai/distilbert_punctuator_zh` 📎 [Model details](https://huggingface.co/Qishuai/distilbert_punctuator_zh)
+* model examples in huggingface web page.
+  * English model
   <figure>
     <img src="./docs/static/english_model_example.png" width="600" />
   </figure>
 
-  * `Qishuai/distilbert_punctuator_zh` 📎 [Model details](https://huggingface.co/Qishuai/distilbert_punctuator_zh)
+  * Simplified Chinese model
   <figure>
     <img src="./docs/static/chinese_model_example.png" width="600" />
   </figure>
