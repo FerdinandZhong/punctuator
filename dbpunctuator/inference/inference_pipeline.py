@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-from functools import wraps
 from typing import Dict, Optional
 
 import numpy as np
@@ -23,6 +22,8 @@ from dbpunctuator.utils import (
     is_ascii,
 )
 
+from .utils import verbose
+
 logger = logging.getLogger(__name__)
 
 num_regex = re.compile(f"{NUMBER.pattern}")
@@ -30,22 +31,6 @@ tel_regex = re.compile(f"{TELEPHONE.pattern}")
 currency_regex = re.compile(f"{CURRENCY.pattern}")
 email_regex = re.compile(f"{EMAIL.pattern}")
 url_regex = re.compile(f"{URL.pattern}")
-
-
-def verbose(attr_to_log):
-    def wrapper_out(func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            self = func(self, *args, **kwargs)
-            if self.verbose:
-                logger.debug(
-                    f'After {func.__name__}, {attr_to_log} is generated as "{getattr(self, attr_to_log)}"'
-                )
-            return self
-
-        return wrapper
-
-    return wrapper_out
 
 
 class InferenceArguments(BaseModel):
@@ -275,54 +260,3 @@ class InferencePipeline:
         self.special_token_indexes = []
         self.all_tokens = []
         self.outputs = []
-
-
-class InferenceServer:
-    """Inference server"""
-
-    def __init__(
-        self, inference_args, conn, termination, check_interval, verbose=False
-    ) -> None:
-        """Server for receiving tasks from client and do punctuation
-
-        Args:
-            server_address (str, optional): [server socket address]. Defaults to "/tmp/socket".
-        """
-        self.inference_pipeline = InferencePipeline(inference_args, verbose=verbose)
-        self.conn = conn
-        self.termination = termination
-        self.check_interval = check_interval
-
-    def punctuation(self):
-        try:
-            inputs = self.conn.recv()
-            outputs_tuple = self.inference_pipeline.punctuation(inputs)
-            self.conn.send(outputs_tuple)
-        except OSError as err:
-            logger.warning(f"error receiving inputs: {err}")
-
-    def run(self):
-        assert self.inference_pipeline, "no inference pipeline set up"
-        logger.info("server is running")
-        while True:
-            try:
-                if (
-                    self.conn.poll(self.check_interval)
-                    and not self.termination.is_set()
-                ):
-                    self.punctuation()
-                if self.termination.is_set():
-                    logger.info("termination is set")
-                    break
-            except OSError as err:
-                logger.warning(f"sending output error: {err}")
-                raise err
-            except KeyboardInterrupt:
-                logger.warning("punctuator shut down by keyboard interrupt")
-                break
-        self.terminate()
-
-    def terminate(self):
-        logger.info("terminate punctuation server")
-
-        self.conn.close()

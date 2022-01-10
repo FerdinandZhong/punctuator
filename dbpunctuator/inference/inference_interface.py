@@ -7,7 +7,7 @@ from threading import Thread
 from time import sleep
 from typing import List, Tuple
 
-from .inference_pipeline import InferenceServer
+from .inference_server import InferenceServer
 
 # from utils.utils import register_logger
 
