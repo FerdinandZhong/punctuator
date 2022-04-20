@@ -12,7 +12,7 @@ with open(path.join(here, "requirements.txt"), encoding="utf-8") as f:
 
 setup(
     name="distilbert-punctuator",
-    version="0.2.0",
+    version="0.2.1",
     description="A small seq2seq punctuator tool based on DistilBERT",
     long_description=readme,
     long_description_content_type="text/markdown",
