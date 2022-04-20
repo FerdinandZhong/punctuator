@@ -114,7 +114,6 @@ Arguments required for the inference pipeline.
        "C_PERIOD": ("。", True),
        "C_QUESTIONMARK": ("? ", True),
        "C_EXLAMATIONMARK": ("! ", True),
-       "C_COLON": ("：", True),
        "C_DUNHAO": ("、", False),
    }
    ```

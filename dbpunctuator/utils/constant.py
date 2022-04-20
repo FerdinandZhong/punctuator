@@ -11,7 +11,7 @@ CURRENCY_TOKEN = "<CURRENCY>"
 NUMBER_TOKEN = "<NUM>"
 URL = build_new_regex(
     "url_checking",
-    r"https?:\/\/[!-~]+|[a-zA-Z0-9_.+-]+\.[a-zA-Z0-9-]+$",
+    r"https?:\/\/[!-~]+|[!-~]+\.[-_a-z/]+",
 )
 
 
@@ -29,7 +29,6 @@ DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP = {
     "C_PERIOD": ("。", True),
     "C_QUESTIONMARK": ("? ", True),
     "C_EXLAMATIONMARK": ("! ", True),
-    "C_COLON": ("：", True),
     "C_DUNHAO": ("、", False),
 }
 
@@ -46,7 +45,6 @@ DEFAULT_CHINESE_NER_MAPPING = {
     "。": "C_PERIOD",
     "？": "C_QUESTIONMARK",
     "！": "C_EXLAMATIONMARK",
-    "：": "C_COLON",
     "、": "C_DUNHAO",
 }
 

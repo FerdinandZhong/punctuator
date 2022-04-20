@@ -71,7 +71,6 @@ class InferenceArguments(BaseModel):
                     "C_PERIOD": ("。", True),
                     "C_QUESTIONMARK": ("? ", True),
                     "C_EXLAMATIONMARK": ("! ", True),
-                    "C_COLON": ("：", True),
                     "C_DUNHAO": ("、", False),
                 }
             for own fine-tuned model with different tags, pass in your own mapping
