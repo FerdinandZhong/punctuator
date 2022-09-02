@@ -4,9 +4,9 @@ from typing import Dict, Optional
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from pydantic import BaseModel
 from sklearn.model_selection import train_test_split
-from torch._C import device  # noqa: F401
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import (
@@ -19,6 +19,8 @@ from transformers import (
 from .dataset import PunctuatorDataset, generate_tag_ids, read_data
 
 logger = logging.getLogger(__name__)
+
+ALPHA = 0.5  # alpha for r-drop
 
 
 class TrainingArguments(BaseModel):
@@ -212,6 +214,26 @@ class TrainingPipeline:
 
         return encoded_labels
 
+    def _compute_kl_loss(self, p, q, pad_mask=None):
+        p_loss = F.kl_div(
+            F.log_softmax(p, dim=-1), F.softmax(q, dim=-1), reduction="none"
+        )
+        q_loss = F.kl_div(
+            F.log_softmax(q, dim=-1), F.softmax(p, dim=-1), reduction="none"
+        )
+
+        # pad_mask is for seq-level tasks
+        if pad_mask is not None:
+            p_loss.masked_fill_(pad_mask, 0.0)
+            q_loss.masked_fill_(pad_mask, 0.0)
+
+        # You can choose whether to use function "sum" and "mean" depending on your task
+        p_loss = p_loss.sum()
+        q_loss = q_loss.sum()
+
+        loss = (p_loss + q_loss) / 2
+        return loss
+
     def _train(self, iterator, optim, is_val=False):
         epoch_loss = 0
         epoch_acc = 0
@@ -230,18 +252,40 @@ class TrainingPipeline:
                 input_ids = batch["input_ids"].to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
                 labels = batch["labels"].to(self.device)
-                outputs = self.classifier(
-                    input_ids, attention_mask=attention_mask, labels=labels
-                )
-                loss = outputs.loss
-                logits = outputs.logits
+
+                if not is_val:
+                    outputs_1 = self.classifier(
+                        input_ids, attention_mask=attention_mask, labels=labels
+                    )
+                    loss_1 = outputs_1.loss
+                    logits_1 = outputs_1.logits
+
+                    outputs_2 = self.classifier(
+                        input_ids, attention_mask=attention_mask, labels=labels
+                    )
+                    loss_2 = outputs_2.loss
+                    logits_2 = outputs_2.logits
+
+                    epoch_loss += loss.item()
+
+                    # cross entropy loss for classifier
+                    ce_loss = 0.5 * (loss_1 + loss_2)
+                    kl_loss = self._compute_kl_loss(logits_1, logits_2)
+
+                    # carefully choose hyper-parameters
+                    loss = ce_loss + ALPHA * kl_loss
+                    logits = logits_1.add(logits_2) / 2 # average over two logits
+                    loss.backward()
+                    optim.step()
+                else:
+                    outputs = self.classifier(
+                        input_ids, attention_mask=attention_mask, labels=labels
+                    )
+                    loss = outputs.loss
+                    logits = outputs.logits
 
                 epoch_loss += loss.item()
                 epoch_acc += self._accuracy(logits, attention_mask, labels)
-
-                if not is_val:
-                    loss.backward()
-                    optim.step()
 
                 pbar.update(1)
                 pbar.set_postfix(
