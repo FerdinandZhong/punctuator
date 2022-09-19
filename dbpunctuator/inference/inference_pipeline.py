@@ -2,6 +2,7 @@ import json
 import logging
 import re
 from functools import wraps
+from os import environ
 from typing import Dict, Optional
 
 import numpy as np
@@ -75,12 +76,14 @@ class InferenceArguments(BaseModel):
                 }
             for own fine-tuned model with different tags, pass in your own mapping
         tag2id_storage_path(Optional[str]): tag2id storage path. Default one is from model config. Pass in this argument if your model doesn't have a tag2id inside config # noqa: E501
+        gpu_device(int): specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
     """
 
     model_name_or_path: str
     tokenizer_name: str
     tag2punctuator: Dict[str, tuple]
     tag2id_storage_path: Optional[str]
+    gpu_device: int = environ.get("CUDA_VISIBLE_DEVICES", 0)
 
 
 # whole pipeline running in the seperate process, provide a function for user to call, use socket for communication
@@ -88,9 +91,12 @@ class InferencePipeline:
     """Pipeline for inference"""
 
     def __init__(self, inference_arguments, verbose=False):
-        self.device = (
-            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        )
+        if torch.cuda.is_available():
+            self.device = torch.device(f"cuda:{inference_arguments.gpu_device}")
+            logger.info(f"device type: {self.device.type}")
+        else:
+            torch.device("cpu")
+
         self.tokenizer = DistilBertTokenizerFast.from_pretrained(
             inference_arguments.tokenizer_name
         )

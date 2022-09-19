@@ -4,7 +4,7 @@ import unicodedata
 from plane import CJK
 
 from dbpunctuator.data_process import clean_up_data_from_txt, generate_training_data
-from dbpunctuator.training import ValidationArguments, ValidationPipeline
+from dbpunctuator.training import EvaluationArguments, EvaluationPipeline
 from dbpunctuator.utils import (
     DEFAULT_CHINESE_NER_MAPPING,
     chinese_split,
@@ -71,7 +71,7 @@ if __name__ == "__main__":
         ner_mapping=DEFAULT_CHINESE_NER_MAPPING,
     )
 
-    validation_args = ValidationArguments(
+    validation_args = EvaluationArguments(
         data_file_path="validation_data/chinese_token_tag_data.txt",
         model_name_or_path="Qishuai/distilbert_punctuator_zh",
         tokenizer_name="Qishuai/distilbert_punctuator_zh",
@@ -80,5 +80,5 @@ if __name__ == "__main__":
         batch_size=16,
     )
 
-    validate_pipeline = ValidationPipeline(validation_args)
+    validate_pipeline = EvaluationPipeline(validation_args)
     validate_pipeline.run()
