@@ -157,7 +157,7 @@ def process_line(line, ner_mapping):
     return token_list, tag_list
 
 
-def generate_training_data(
+def generate_corpus(
     cleaned_data_path,
     training_data_path,
     ner_mapping=DEFAULT_ENGLISH_NER_MAPPING,

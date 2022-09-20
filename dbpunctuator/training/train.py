@@ -1,24 +1,34 @@
 import logging
 import time
+from os import environ
 from typing import Dict, Optional
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 from pydantic import BaseModel
 from sklearn.model_selection import train_test_split
-from torch._C import device  # noqa: F401
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import (
     AdamW,
     DistilBertConfig,
     DistilBertForTokenClassification,
     DistilBertTokenizerFast,
+    get_constant_schedule_with_warmup,
 )
 
-from .dataset import PunctuatorDataset, generate_tag_ids, read_data
+from .punctuation_data_process import (
+    EncodingDataset,
+    _generate_punctuator_tag_mappings,
+    read_data,
+)
 
 logger = logging.getLogger(__name__)
+
+ALPHA = 0.1  # alpha for r-drop
+WRITER = SummaryWriter()
 
 
 class TrainingArguments(BaseModel):
@@ -36,6 +46,10 @@ class TrainingArguments(BaseModel):
         model_storage_dir(str): fine-tuned model storage path
         addtional_model_config(Optional[Dict]): additional configuration for model
         early_stop_count(int): after how many epochs to early stop training if valid loss not become smaller. default 3 # noqa: E501
+        gpu_device(int): specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
+        warm_up_steps(int): warm up steps.
+        r_drop(bool): whether to train with r-drop
+        plot_steps(int): record training status to tensorboard among how many steps
     """
 
     data_file_path: str
@@ -49,6 +63,10 @@ class TrainingArguments(BaseModel):
     model_storage_dir: str
     addtional_model_config: Optional[Dict]
     early_stop_count: Optional[int] = 3
+    gpu_device: int = environ.get("CUDA_VISIBLE_DEVICES", 0)
+    warm_up_steps: int = 1000
+    r_drop: bool = False
+    plot_steps: int = 50
 
 
 class TrainingPipeline:
@@ -59,9 +77,10 @@ class TrainingPipeline:
             training_arguments (TrainingArguments): arguments passed to training pipeline
         """
         self.arguments = training_arguments
-        self.device = (
-            torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-        )
+        if torch.cuda.is_available():
+            self.device = torch.device(f"cuda:{training_arguments.gpu_device}")
+        else:
+            torch.device("cpu")
 
     def load_training_data(self):
         logger.info("load training data")
@@ -70,14 +89,22 @@ class TrainingPipeline:
             self.arguments.min_sequence_length,
             self.arguments.max_sequence_length,
         )
+
+        (
+            self.tag2id,
+            self.id2tag,
+            self.class_weights,
+        ) = _generate_punctuator_tag_mappings(tag_docs=tags)
+
         logger.info(f"data sample: {texts[0]}")
         (
             self.train_texts,
             self.val_texts,
             self.train_tags,
             self.val_tags,
-        ) = train_test_split(texts, tags, test_size=self.arguments.split_rate)
-        self.tag2id, self.id2tag = generate_tag_ids(tag_docs=tags)
+        ) = train_test_split(
+            texts, tags, test_size=self.arguments.split_rate, random_state=7
+        )
 
         return self
 
@@ -105,8 +132,8 @@ class TrainingPipeline:
             return_offsets_mapping=True,
             padding=True,
         )
-        self.train_labels = self._encode_tags(self.train_tags, self.train_encodings)
-        self.val_labels = self._encode_tags(self.val_tags, self.val_encodings)
+        self.train_tags = self._encode_tags(self.train_tags, self.train_encodings)
+        self.val_tags = self._encode_tags(self.val_tags, self.val_encodings)
 
         return self
 
@@ -114,10 +141,8 @@ class TrainingPipeline:
         logger.info("generate dataset from tokenized data")
         self.train_encodings.pop("offset_mapping")
         self.val_encodings.pop("offset_mapping")
-        self.training_dataset = PunctuatorDataset(
-            self.train_encodings, self.train_labels
-        )
-        self.val_dataset = PunctuatorDataset(self.val_encodings, self.val_labels)
+        self.training_dataset = EncodingDataset(self.train_encodings, self.train_tags)
+        self.val_dataset = EncodingDataset(self.val_encodings, self.val_tags)
 
         return self
 
@@ -135,10 +160,17 @@ class TrainingPipeline:
         val_loader = DataLoader(
             self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True
         )
-        optim = AdamW(self.classifier.parameters(), lr=5e-5)
+        optim = AdamW(self.classifier.parameters(), lr=1e-5)
 
-        best_valid_loss = 1
+        scheduler = get_constant_schedule_with_warmup(
+            optim,
+            num_warmup_steps=self.arguments.warm_up_steps,
+        )
+
+        best_valid_loss = 1 + ALPHA
         no_improvement_count = 0
+        self.total_steps = 0
+
         with tqdm(total=self.arguments.epoch) as pbar:
             for epoch in range(self.arguments.epoch):
                 pbar.set_description(f"Processing epoch: {epoch + 1}")
@@ -147,8 +179,14 @@ class TrainingPipeline:
 
                 self.classifier.train()
 
-                train_loss, train_acc = self._train(train_loader, optim)
-                val_loss, val_acc = self._train(val_loader, optim, True)
+                train_loss, train_acc = self._train(train_loader, optim, scheduler)
+                val_loss, val_acc = self._train(val_loader, optim, scheduler, True)
+
+                WRITER.add_scalar("Epoch Loss/train", train_loss, epoch + 1)
+                WRITER.add_scalar("Epoch Loss/valid", val_loss, epoch + 1)
+
+                WRITER.add_scalar("Epoch acc/train", train_acc, epoch + 1)
+                WRITER.add_scalar("Epoch acc/valid", val_acc, epoch + 1)
 
                 end_time = time.time()
 
@@ -168,6 +206,7 @@ class TrainingPipeline:
                 if val_loss < best_valid_loss:
                     best_valid_loss = val_loss
                     self.best_state_dict = self.classifier.state_dict()
+                    no_improvement_count = 0
                 else:
                     no_improvement_count += 1
                     if no_improvement_count >= self.arguments.early_stop_count:
@@ -177,6 +216,8 @@ class TrainingPipeline:
                         return self
 
             logger.info("fine-tune finished")
+
+        WRITER.flush()
 
         return self
 
@@ -212,7 +253,27 @@ class TrainingPipeline:
 
         return encoded_labels
 
-    def _train(self, iterator, optim, is_val=False):
+    def _compute_kl_loss(self, p, q, pad_mask=None):
+        p_loss = F.kl_div(
+            F.log_softmax(p, dim=-1), F.softmax(q, dim=-1), reduction="none"
+        )
+        q_loss = F.kl_div(
+            F.log_softmax(q, dim=-1), F.softmax(p, dim=-1), reduction="none"
+        )
+
+        # pad_mask is for seq-level tasks
+        if pad_mask is not None:
+            p_loss.masked_fill_(pad_mask, 0.0)
+            q_loss.masked_fill_(pad_mask, 0.0)
+
+        # You can choose whether to use function "sum" and "mean" depending on your task
+        p_loss = p_loss.mean()
+        q_loss = q_loss.mean()
+
+        loss = (p_loss + q_loss) / 2
+        return loss
+
+    def _train(self, iterator, optim, scheduler=None, is_val=False):
         epoch_loss = 0
         epoch_acc = 0
         if is_val:
@@ -220,38 +281,79 @@ class TrainingPipeline:
         else:
             self.classifier.train()
 
-        steps = 0
+        in_epoch_steps = 0
+
         with tqdm(total=len(iterator)) as pbar:
             for batch in iterator:
-                steps += 1
-                pbar.set_description(f"Processing batch: {steps}")
+                in_epoch_steps += 1
+                pbar.set_description(f"Processing batch: {in_epoch_steps}")
 
                 optim.zero_grad()
                 input_ids = batch["input_ids"].to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
                 labels = batch["labels"].to(self.device)
-                outputs = self.classifier(
-                    input_ids, attention_mask=attention_mask, labels=labels
-                )
-                loss = outputs.loss
-                logits = outputs.logits
 
-                epoch_loss += loss.item()
-                epoch_acc += self._accuracy(logits, attention_mask, labels)
+                if self.arguments.r_drop:
+
+                    outputs_1 = self.classifier(
+                        input_ids, attention_mask=attention_mask, labels=labels
+                    )
+                    logits_1 = outputs_1.logits
+                    loss_1 = F.cross_entropy(
+                        logits_1.view(-1, len(self.tag2id)),
+                        labels.view(-1),
+                        weight=self.class_weights.to(self.device),
+                        reduction="mean",
+                    )
+
+                    outputs_2 = self.classifier(
+                        input_ids, attention_mask=attention_mask, labels=labels
+                    )
+                    logits_2 = outputs_2.logits
+                    loss_2 = F.cross_entropy(
+                        logits_2.view(-1, len(self.tag2id)),
+                        labels.view(-1),
+                        weight=self.class_weights.to(self.device),
+                        reduction="mean",
+                    )
+
+                    # cross entropy loss for classifier
+                    ce_loss = 0.5 * (loss_1 + loss_2)
+                    kl_loss = self._compute_kl_loss(logits_1, logits_2)
+
+                    # carefully choose hyper-parameters
+                    loss = ce_loss + ALPHA * kl_loss
+                    logits = logits_1.add(logits_2) / 2  # average over two logits
+
+                else:
+                    outputs = self.classifier(
+                        input_ids, attention_mask=attention_mask, labels=labels
+                    )
+                    loss = outputs.loss
+                    logits = outputs.logits
 
                 if not is_val:
                     loss.backward()
                     optim.step()
+                    if scheduler:
+                        scheduler.step()
+                    if self.total_steps % self.arguments.plot_steps == 0:
+                        WRITER.add_scalar("Step Loss/train", loss, self.total_steps)
+
+                self.total_steps += 1
+
+                epoch_loss += loss.item()
+                epoch_acc += self._accuracy(logits, attention_mask, labels)
 
                 pbar.update(1)
                 pbar.set_postfix(
                     {
                         "Last_loss": f"{loss:.2f}",
-                        "Avg_cum_loss": f"{epoch_loss/steps:.2f}",
+                        "Avg_cum_loss": f"{epoch_loss/in_epoch_steps:.2f}",
                     }
                 )
 
-        return epoch_loss / steps, epoch_acc / steps
+        return epoch_loss / in_epoch_steps, epoch_acc / in_epoch_steps
 
     def _epoch_time(self, start_time, end_time):
         elapsed_time = end_time - start_time
@@ -282,3 +384,4 @@ class TrainingPipeline:
 
     def run(self):
         self.load_training_data().tokenize().generate_dataset().fine_tune().persist()
+        WRITER.close()

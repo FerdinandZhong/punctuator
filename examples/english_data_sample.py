@@ -1,8 +1,9 @@
 from itertools import zip_longest
 
+import chardet
 import pandas as pd
 
-from dbpunctuator.data_process import cleanup_data_from_csv, generate_training_data
+from dbpunctuator.data_process import cleanup_data_from_csv, generate_corpus
 from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING, remove_brackets_text
 
 
@@ -35,11 +36,12 @@ if __name__ == "__main__":
         special_cleaning_funcs=[remove_brackets_text, lower_input],
     )
 
-    dataframe = (
-        pd.read_csv("./original_data/news_summary_more.csv")
-        .dropna(subset=["text"])
-        .sample(20000)
-    )
+    with open("./original_data/news_summary.csv", "rb") as f:
+        enc = chardet.detect(f.read())
+
+    dataframe = pd.read_csv(
+        "./original_data/news_summary.csv", encoding=enc["encoding"]
+    ).dropna(subset=["text"])
     cleanup_data_from_csv(
         dataframe,
         "text",
@@ -67,7 +69,7 @@ if __name__ == "__main__":
         "./training_data/english_cleaned_ted_text.txt",
     )
 
-    generate_training_data(
+    generate_corpus(
         "./training_data/english_cleaned_text.txt",
         "./training_data/english_token_tag_data.txt",
     )

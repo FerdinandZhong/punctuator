@@ -52,6 +52,7 @@ if __name__ == "__main__":
         model_name_or_path="Qishuai/distilbert_punctuator_en",
         tokenizer_name="Qishuai/distilbert_punctuator_en",
         tag2punctuator=DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP,
+        gpu_device=1,
     )
 
     inference = Inference(inference_args=args, verbose=False)
