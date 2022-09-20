@@ -3,7 +3,7 @@ from itertools import zip_longest
 
 from plane import CJK
 
-from dbpunctuator.data_process import clean_up_data_from_txt, generate_training_data
+from dbpunctuator.data_process import clean_up_data_from_txt, generate_corpus
 from dbpunctuator.utils import DEFAULT_CHINESE_NER_MAPPING, remove_brackets_text
 
 
@@ -76,7 +76,7 @@ if __name__ == "__main__":
         ],
     )
 
-    generate_training_data(
+    generate_corpus(
         "./training_data/chinese_cleaned_text.txt",
         "./training_data/chinese_token_tag_data.txt",
         ner_mapping=DEFAULT_CHINESE_NER_MAPPING,

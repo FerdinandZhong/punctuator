@@ -48,7 +48,7 @@ class EvaluationPipeline:
         if torch.cuda.is_available():
             self.device = torch.device(f"cuda:{validation_arguments.gpu_device}")
         else:
-            torch.device("cpu")
+            self.device = torch.device("cpu")
 
         self.tokenizer = DistilBertTokenizerFast.from_pretrained(
             validation_arguments.tokenizer_name

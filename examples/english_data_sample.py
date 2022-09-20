@@ -1,7 +1,7 @@
 from itertools import zip_longest
 import chardet
 import pandas as pd
-from dbpunctuator.data_process import generate_training_data
+from dbpunctuator.data_process import generate_corpus
 from dbpunctuator.data_process import cleanup_data_from_csv
 from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING, remove_brackets_text
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
         "./training_data/english_cleaned_ted_text.txt",
     )
 
-    generate_training_data(
+    generate_corpus(
         "./training_data/english_cleaned_text.txt",
         "./training_data/english_token_tag_data.txt",
     )

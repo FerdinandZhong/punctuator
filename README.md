@@ -1,5 +1,17 @@
 # Distilbert-punctuator
 
+<p align="center">
+  <a href="https://pypi.org/project/distilbert-punctuator/">
+      <img src="https://badge.fury.io/py/distilbert-punctuator.svg" alt="PyPI version" height="20">
+  </a>
+  <a href="https://pepy.tech/project/distilbert-punctuator">
+      <img src="https://pepy.tech/badge/distilbert-punctuator/month" alt="PyPi Downloads" height="20">
+  </a>
+  <a href="https://tldrlegal.com/license/apache-license-2.0-(apache-2.0)">
+      <img src="https://img.shields.io/github/license/mosecorg/mosec" alt="License" height="20">
+  </a>
+</p>
+
 ## Introduction
 Distilbert-punctuator is a python package provides a bert-based punctuator (fine-tuned model of `pretrained huggingface DistilBertForTokenClassification`) with following three components:
 
@@ -38,6 +50,9 @@ The package is providing a simple pipeline for you to generate `NER` format trai
 
 ## Train
 Component for providing a training pipeline for fine-tuning a pretrained `DistilBertForTokenClassification` model from `huggingface`.
+The latest version has the implementation of **`R-Drop`** enhanced training. 
+[R-Drop github repo](https://github.com/dropreg/R-Drop)
+[Paper of R-Drop](https://arxiv.org/abs/2106.14448)
 
 ### Example
 `examples/english_train_sample.py`
@@ -45,32 +60,47 @@ Component for providing a training pipeline for fine-tuning a pretrained `Distil
 ### Training_arguments:
 Arguments required for the training pipeline.
 
-- `data_file_path(str)`: path of training data
-- `model_name_or_path(str)`: name or path of pre-trained model
-- `tokenizer_name(str)`: name of pretrained tokenizer
-- `split_rate(float)`: train and validation split rate
-- `min_sequence_length(int)`: min sequence length of one sample
-- `max_sequence_length(int)`: max sequence length of one sample
-- `epoch(int)`: number of epoch
-- `batch_size(int)`: batch size
-- `model_storage_path(str)`: fine-tuned model storage path
-- `addtional_model_config(Optional[Dict])`: additional configuration for model
-- `early_stop_count(int)`: after how many epochs to early stop training if valid loss not become smaller. default 3
+- # basic arguments
+  - `training_corpus(List[List[str]])`: list of sequences for training, longest sequence should be no longer than pretrained LM # noqa: E501
+  - `validation_corpus(List[List[str]])`: list of sequences for validation, longest sequence should be no longer than pretrained LM # noqa: E501
+  - `training_tags(List[List[int]])`: tags(int) for training
+  - `validation_tags(List[List[int]])`: tags(int) for validation
+  - `model_name_or_path(str)`: name or path of pre-trained model
+  - `tokenizer_name(str)`: name of pretrained tokenizer
 
-## Validate
+- # training arguments
+  - `epoch(int)`: number of epoch
+  - `batch_size(int)`: batch size
+  - `model_storage_dir(str)`: fine-tuned model storage path
+  - `label2id(Dict)`: the tags label and id mapping
+  - `early_stop_count(int)`: after how many epochs to early stop training if valid loss not become smaller. default 3 # noqa: E501
+  - `gpu_device(int)`: specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
+  - `warm_up_steps(int)`: warm up steps.
+  - `r_drop(bool)`: whether to train with r-drop
+  - `r_alpha(int)`: alpha value for kl divengence in the loss, default is 0
+  - `plot_steps(int)`: record training status to tensorboard among how many steps
+  - `tensorboard_log_dir(Optional[str])`: the tensorboard logs output directory, default is "runs"
+
+- # model arguments
+  - `addtional_model_config(Optional[Dict])`: additional configuration for model
+
+You can also train your own NER models with the trainer provided in this repo. 
+The example can be found in `notebooks/R-drop NER.ipynb`
+
+## Evaluation
 Validation of fine-tuned model
 
 ### Example
 `examples/train_sample.py`
 
 ### Validation_arguments:
-- `data_file_path(str)`: path of validation data
+- `evaluation_corpus(List[List[str]])`: list of sequences for evaluation, longest sequence should be no longer than pretrained LM's max_position_embedding(512)
+- `evaluation_tags(List[List[int]])`: tags(int) for evaluation (the GT)
 - `model_name_or_path(str)`: name or path of fine-tuned model
 - `tokenizer_name(str)`: name of tokenizer
-- `min_sequence_length(int)`: min sequence length of one sample
-- `max_sequence_length(int)`: max sequence length of one sample
 - `batch_size(int)`: batch size
-- `tag2id_storage_path(Optional[str])`: tag2id storage path. Default one is from model config.
+- `label2id(Optional[Dict])`: label2id. Default one is from model config. Pass in this argument if your model doesn't have a label2id inside config
+- `gpu_device(int)`: specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
 
 ## Inference
 Component for providing an inference interface for user to use punctuator.

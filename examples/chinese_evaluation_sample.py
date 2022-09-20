@@ -3,8 +3,8 @@ import unicodedata
 
 from plane import CJK
 
-from dbpunctuator.data_process import clean_up_data_from_txt, generate_training_data
-from dbpunctuator.training import EvaluationArguments, EvaluationPipeline
+from dbpunctuator.data_process import clean_up_data_from_txt, generate_corpus
+from dbpunctuator.training import EvaluationArguments, EvaluationPipeline, generate_evaluation_data
 from dbpunctuator.utils import (
     DEFAULT_CHINESE_NER_MAPPING,
     chinese_split,
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     # test with left MSRA News data
     clean_up_data_from_txt(
         "./original_data/MSRA.txt",
-        "./validation_data/chinese_cleaned_text.txt",
+        "./evaluation_data/chinese_cleaned_text.txt",
         ner_mapping=DEFAULT_CHINESE_NER_MAPPING,
         additional_to_remove=["℃", "|"],
         special_cleaning_funcs=[
@@ -65,20 +65,31 @@ if __name__ == "__main__":
         ],
     )
 
-    generate_training_data(
-        "./validation_data/chinese_cleaned_text.txt",
-        "./validation_data/chinese_token_tag_data.txt",
+    generate_corpus(
+        "./evaluation_data/chinese_cleaned_text.txt",
+        "./evaluation_data/chinese_token_tag_data.txt",
         ner_mapping=DEFAULT_CHINESE_NER_MAPPING,
     )
 
-    validation_args = EvaluationArguments(
-        data_file_path="validation_data/chinese_token_tag_data.txt",
+    label2id = {
+        "C_COMMA": 2,
+        "C_DUNHAO": 1,
+        "C_EXLAMATIONMARK": 0,
+        "C_PERIOD": 5,
+        "C_QUESTIONMARK": 3,
+        "O": 4
+    },
+    evalution_corpus, evaluation_tags = generate_evaluation_data("evaluation_data/chinese_token_tag_data.txt", 16, 256)
+    evaluation_tags = [[label2id[tag] for tag in doc] for doc in evaluation_tags]
+    evaluation_args = EvaluationArguments(
+        evaluation_corpus=evalution_corpus,
+        evaluation_tags=evaluation_tags,
         model_name_or_path="Qishuai/distilbert_punctuator_zh",
         tokenizer_name="Qishuai/distilbert_punctuator_zh",
-        min_sequence_length=100,
-        max_sequence_length=200,
         batch_size=16,
+        gpu_device=2,
+        label2id=label2id
     )
 
-    validate_pipeline = EvaluationPipeline(validation_args)
-    validate_pipeline.run()
+    evaluation_pipeline = EvaluationPipeline(evaluation_args)
+    evaluation_pipeline.run()

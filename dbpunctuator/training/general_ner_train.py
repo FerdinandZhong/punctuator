@@ -103,7 +103,7 @@ class NERTrainingPipeline:
         if torch.cuda.is_available():
             self.device = torch.device(f"cuda:{training_arguments.gpu_device}")
         else:
-            torch.device("cpu")
+            self.device = torch.device("cpu")
         self.label2id = training_arguments.label2id
         self.id2label = {id: label for label, id in self.label2id.items()}
         self.tensorboard_writter = SummaryWriter(training_arguments.tensorboard_log_dir)
@@ -307,8 +307,8 @@ class NERTrainingPipeline:
             q_loss.masked_fill_(pad_mask, 0.0)
 
         # # You can choose whether to use function "sum" and "mean" depending on your task
-        p_loss = p_loss.mean()
-        q_loss = q_loss.mean()
+        p_loss = p_loss.sum()
+        q_loss = q_loss.sum()
 
         loss = (p_loss + q_loss) / 2
         return loss

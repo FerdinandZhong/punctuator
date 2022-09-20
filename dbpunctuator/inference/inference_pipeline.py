@@ -95,7 +95,7 @@ class InferencePipeline:
             self.device = torch.device(f"cuda:{inference_arguments.gpu_device}")
             logger.info(f"device type: {self.device.type}")
         else:
-            torch.device("cpu")
+            self.device = torch.device("cpu")
 
         self.tokenizer = DistilBertTokenizerFast.from_pretrained(
             inference_arguments.tokenizer_name
