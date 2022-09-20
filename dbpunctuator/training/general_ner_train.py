@@ -250,7 +250,10 @@ class NERTrainingPipeline:
                     no_improvement_count = 0
                 else:
                     no_improvement_count += 1
-                    if self.arguments.early_stop_count > 0 and no_improvement_count >= self.arguments.early_stop_count:
+                    if (
+                        self.arguments.early_stop_count > 0
+                        and no_improvement_count >= self.arguments.early_stop_count
+                    ):
                         logger.info(
                             f"No improvement for past {no_improvement_count} epochs, early stop training."
                         )
@@ -298,7 +301,9 @@ class NERTrainingPipeline:
             F.log_softmax(p, dim=-1), F.softmax(q, dim=-1), reduction="none"
         )
         q_loss = F.kl_div(
-            F.log_softmax(q, dim=-1), F.softmax(p, dim=-1), reduction="none",
+            F.log_softmax(q, dim=-1),
+            F.softmax(p, dim=-1),
+            reduction="none",
         )
 
         # pad_mask is for seq-level tasks

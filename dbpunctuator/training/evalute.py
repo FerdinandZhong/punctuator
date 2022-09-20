@@ -1,4 +1,3 @@
-import json
 import logging
 from os import environ
 from typing import Dict, List, Optional
@@ -61,7 +60,6 @@ class EvaluationPipeline:
         else:
             self.label2id = self.classifier.config.label2id
 
-
     def tokenize(self):
         logger.info("tokenize data")
         tokenizer = DistilBertTokenizerFast.from_pretrained(
@@ -73,7 +71,9 @@ class EvaluationPipeline:
             return_offsets_mapping=True,
             padding=True,
         )
-        self.evaluation_encoded_tags = self._encode_tags(self.arguments.evaluation_tags, self.encodings)
+        self.evaluation_encoded_tags = self._encode_tags(
+            self.arguments.evaluation_tags, self.encodings
+        )
         self.dataset = EncodingDataset(self.encodings, self.evaluation_encoded_tags)
 
         return self

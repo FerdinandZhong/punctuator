@@ -19,7 +19,11 @@ from transformers import (
     get_constant_schedule_with_warmup,
 )
 
-from .punctuation_data_process import EncodingDataset, _generate_punctuator_tag_mappings, read_data
+from .punctuation_data_process import (
+    EncodingDataset,
+    _generate_punctuator_tag_mappings,
+    read_data,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +90,11 @@ class TrainingPipeline:
             self.arguments.max_sequence_length,
         )
 
-        self.tag2id, self.id2tag, self.class_weights = _generate_punctuator_tag_mappings(tag_docs=tags)
+        (
+            self.tag2id,
+            self.id2tag,
+            self.class_weights,
+        ) = _generate_punctuator_tag_mappings(tag_docs=tags)
 
         logger.info(f"data sample: {texts[0]}")
         (

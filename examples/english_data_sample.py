@@ -1,9 +1,11 @@
 from itertools import zip_longest
+
 import chardet
 import pandas as pd
-from dbpunctuator.data_process import generate_corpus
-from dbpunctuator.data_process import cleanup_data_from_csv
+
+from dbpunctuator.data_process import cleanup_data_from_csv, generate_corpus
 from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING, remove_brackets_text
+
 
 def lower_input(input):
     return input.lower()

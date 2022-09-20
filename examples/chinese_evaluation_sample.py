@@ -4,7 +4,11 @@ import unicodedata
 from plane import CJK
 
 from dbpunctuator.data_process import clean_up_data_from_txt, generate_corpus
-from dbpunctuator.training import EvaluationArguments, EvaluationPipeline, generate_evaluation_data
+from dbpunctuator.training import (
+    EvaluationArguments,
+    EvaluationPipeline,
+    generate_evaluation_data,
+)
 from dbpunctuator.utils import (
     DEFAULT_CHINESE_NER_MAPPING,
     chinese_split,
@@ -71,15 +75,19 @@ if __name__ == "__main__":
         ner_mapping=DEFAULT_CHINESE_NER_MAPPING,
     )
 
-    label2id = {
-        "C_COMMA": 2,
-        "C_DUNHAO": 1,
-        "C_EXLAMATIONMARK": 0,
-        "C_PERIOD": 5,
-        "C_QUESTIONMARK": 3,
-        "O": 4
-    },
-    evalution_corpus, evaluation_tags = generate_evaluation_data("evaluation_data/chinese_token_tag_data.txt", 16, 256)
+    label2id = (
+        {
+            "C_COMMA": 2,
+            "C_DUNHAO": 1,
+            "C_EXLAMATIONMARK": 0,
+            "C_PERIOD": 5,
+            "C_QUESTIONMARK": 3,
+            "O": 4,
+        },
+    )
+    evalution_corpus, evaluation_tags = generate_evaluation_data(
+        "evaluation_data/chinese_token_tag_data.txt", 16, 256
+    )
     evaluation_tags = [[label2id[tag] for tag in doc] for doc in evaluation_tags]
     evaluation_args = EvaluationArguments(
         evaluation_corpus=evalution_corpus,
@@ -88,7 +96,7 @@ if __name__ == "__main__":
         tokenizer_name="Qishuai/distilbert_punctuator_zh",
         batch_size=16,
         gpu_device=2,
-        label2id=label2id
+        label2id=label2id,
     )
 
     evaluation_pipeline = EvaluationPipeline(evaluation_args)

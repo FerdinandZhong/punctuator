@@ -4,10 +4,9 @@ from typing import List
 
 import numpy as np
 import torch
-from sklearn.utils import class_weight
+from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from sklearn.model_selection import train_test_split
 
 from dbpunctuator.utils import NORMAL_TOKEN_TAG
 
@@ -86,10 +85,10 @@ def unison_shuffled_copies(a, b):
 
 def generate_evaluation_data(data_file_path, min_sequence_length, max_sequence_length):
     """
-    Function for generation of evaluation assets including 
+    Function for generation of evaluation assets including
     - evaluation corpus
     - evaluatio  tags
-    
+
     Args:
         data_file_path(str): path of overall input data
         min_sequence_length(int): min sequence length of one sample
@@ -103,13 +102,16 @@ def generate_evaluation_data(data_file_path, min_sequence_length, max_sequence_l
     )
     return texts, tags
 
-def generate_training_data(data_file_path, min_sequence_length, max_sequence_length, split_rate):
+
+def generate_training_data(
+    data_file_path, min_sequence_length, max_sequence_length, split_rate
+):
     """
-    Function for generation of training assets including 
+    Function for generation of training assets including
     - training corpus
     - training tags
     - validation corpus
-    - validation tags 
+    - validation tags
 
     Args:
         data_file_path(str): path of overall input data
@@ -130,9 +132,7 @@ def generate_training_data(data_file_path, min_sequence_length, max_sequence_len
         val_texts,
         train_tags,
         val_tags,
-    ) = train_test_split(
-        texts, tags, test_size=split_rate, random_state=7
-    )
+    ) = train_test_split(texts, tags, test_size=split_rate, random_state=7)
 
     return train_texts, train_tags, val_texts, val_tags
 
