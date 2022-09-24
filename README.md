@@ -5,7 +5,10 @@
       <img src="https://badge.fury.io/py/distilbert-punctuator.svg" alt="PyPI version" height="20">
   </a>
   <a href="https://pepy.tech/project/distilbert-punctuator">
-      <img src="https://pepy.tech/badge/distilbert-punctuator/month" alt="PyPi Downloads" height="20">
+      <img src="https://pepy.tech/badge/distilbert-punctuator" alt="PyPi Downloads" height="20">
+  </a>
+  <a href="https://pepy.tech/project/distilbert-punctuator">
+      <img src="https://pepy.tech/badge/distilbert-punctuator/month" alt="PyPi Latest Month Downloads" height="20">
   </a>
   <a href="https://tldrlegal.com/license/apache-license-2.0-(apache-2.0)">
       <img src="https://img.shields.io/github/license/mosecorg/mosec" alt="License" height="20">
