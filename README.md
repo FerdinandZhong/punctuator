@@ -19,7 +19,7 @@
 Distilbert-punctuator is a python package provides a bert-based punctuator (fine-tuned model of `pretrained huggingface DistilBertForTokenClassification`) with following three components:
 
 * **data process**: funcs for processing user's data to prepare for training. If user perfer to fine-tune the model with his/her own data.
-* **training**: training pipeline and doing validation. User can fine-tune his/her own punctuator with the pipeline
+* **training**: training pipeline and evaluation. User can fine-tune his/her own punctuator with the pipeline
 * **inference**: easy-to-use interface for user to use trained punctuator.
 * If user doesn't want to train a punctuator himself/herself, two pre-fined-tuned model from huggingface model hub
   * `Qishuai/distilbert_punctuator_en` 📎 [Model details](https://huggingface.co/Qishuai/distilbert_punctuator_en)
