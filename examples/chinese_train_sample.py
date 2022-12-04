@@ -1,7 +1,7 @@
 from dbpunctuator.training import (
     NERTrainingArguments,
     NERTrainingPipeline,
-    generate_training_data,
+    generate_training_data_splitting,
 )
 
 if __name__ == "__main__":
@@ -12,7 +12,7 @@ if __name__ == "__main__":
         training_tags,
         validation_corpus,
         validation_tags,
-    ) = generate_training_data(data_file_path, 16, 256, 0.25)
+    ) = generate_training_data_splitting(data_file_path, 16, 256, 0.25)
 
     label2id = {
         "O": 0,
@@ -31,7 +31,7 @@ if __name__ == "__main__":
         validation_corpus=validation_corpus,
         training_tags=training_tags,
         validation_tags=validation_tags,
-        model_name_or_path="models/distilbert-base-chinese",
+        model_weight_name="models/distilbert-base-chinese",
         tokenizer_name="bert-base-chinese",
         epoch=20,
         batch_size=16,

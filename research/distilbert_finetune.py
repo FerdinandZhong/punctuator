@@ -1,20 +1,30 @@
 from dbpunctuator.training import (
     NERTrainingArguments,
     NERTrainingPipeline,
-    generate_training_data_splitting,
+    process_data,
 )
 
-data_file_path = "training_data/english_token_tag_data.txt"
+training_data_file_path = "data/IWSLT/formatted/train2012"
+eval_data_file_path = "data/IWSLT/formatted/dev2012"
+
+with open(training_data_file_path, "r", encoding="ISO-8859-1") as file:
+    training_raw = file.readlines()
+
+with open(eval_data_file_path, "r", encoding="ISO-8859-1") as file:
+    val_raw = file.readlines()
+
 
 (
     training_corpus,
     training_tags,
+) = process_data(training_raw, 256, 256)
+
+(
     validation_corpus,
     validation_tags,
-) = generate_training_data_splitting(data_file_path, 16, 256, 0.25)
+) = process_data(val_raw, 256, 256)
 
-
-label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTIONMARK": 3, "EXLAMATIONMARK": 4}
+label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
 training_tags = [[label2id[tag] for tag in doc] for doc in training_tags]
 validation_tags = [[label2id[tag] for tag in doc] for doc in validation_tags]
 
@@ -26,16 +36,16 @@ training_args = NERTrainingArguments(
     model_weight_name="distilbert-base-uncased",
     tokenizer_name="distilbert-base-uncased",
     epoch=20,
-    batch_size=16,
-    model_storage_dir="models/english_punctuator_no_rdrop_new",
+    batch_size=64,
+    model_storage_dir="models/iwslt_distilbert",
     addtional_model_config={"dropout": 0.3, "attention_dropout": 0.3},
-    gpu_device=2,
+    gpu_device=0,
     warm_up_steps=500,
     r_drop=False,
     r_alpha=0.2,
-    tensorboard_log_dir="runs/english_punctuator_rdrop",
+    tensorboard_log_dir="runs/iwslt_distilbert",
     label2id=label2id,
-    early_stop_count=4,
+    early_stop_count=3,
 )
 
 training_pipeline = NERTrainingPipeline(training_args)

@@ -20,6 +20,7 @@ from .constant import (
     URL_TOKEN,
 )
 from .utils import is_ascii
+from .model_zoo import Models, ModelCollection
 
 __all__ = [
     "ALL_PUNCS",
@@ -40,4 +41,6 @@ __all__ = [
     "remove_brackets_text",
     "keep_only_latin_characters",
     "chinese_split",
+    "Models",
+    "ModelCollection"
 ]

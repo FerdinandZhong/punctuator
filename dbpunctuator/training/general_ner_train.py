@@ -1,7 +1,7 @@
 import logging
 import time
 from os import environ
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -16,11 +16,16 @@ from transformers import (
     DistilBertConfig,
     DistilBertForTokenClassification,
     DistilBertTokenizerFast,
+    BertConfig,
+    BertForTokenClassification,
+    BertTokenizerFast,
     get_constant_schedule_with_warmup,
 )
+from dbpunctuator.utils import ModelCollection, Models
+from enum import Enum
+from collections import namedtuple
 
 logger = logging.getLogger(__name__)
-
 DEFAULT_LABEL_WEIGHT = 1
 
 
@@ -47,7 +52,8 @@ class NERTrainingArguments(BaseModel):
         validation_corpus(List[List[str]]): list of sequences for validation, longest sequence should be no longer than pretrained LM # noqa: E501
         training_tags(List[List[int]]): tags(int) for training
         validation_tags(List[List[int]]): tags(int) for validation
-        model_name_or_path(str): name or path of pre-trained model
+        model(Optional(enum)): model selected from Enum Models, default is "DISTILBERT"
+        model_weight_name(str): name or path of pre-trained model weight
         tokenizer_name(str): name of pretrained tokenizer
 
         # training arguments
@@ -56,7 +62,8 @@ class NERTrainingArguments(BaseModel):
         model_storage_dir(str): fine-tuned model storage path
         label2id(Dict): the tags label and id mapping
         early_stop_count(int): after how many epochs to early stop training if valid loss not become smaller. default 3 # noqa: E501
-        gpu_device(int): specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
+        use_gpu(Optional[bool]): whether to use gpu for training, default is "True"
+        gpu_device(Optional[int]): specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
         warm_up_steps(int): warm up steps.
         r_drop(bool): whether to train with r-drop
         r_alpha(int): alpha value for kl divengence in the loss, default is 0
@@ -72,8 +79,9 @@ class NERTrainingArguments(BaseModel):
     validation_corpus: List[List[str]]
     training_tags: List[List[int]]
     validation_tags: List[List[int]]
-    model_name_or_path: str
+    model_weight_name: str
     tokenizer_name: str
+    model: Optional[Models] = Models.DISTILBERT
 
     # training ars
     epoch: int
@@ -81,7 +89,8 @@ class NERTrainingArguments(BaseModel):
     model_storage_dir: str
     label2id: Dict
     early_stop_count: Optional[int] = 3
-    gpu_device: int = environ.get("CUDA_VISIBLE_DEVICES", 0)
+    use_gpu: Optional[bool] = True
+    gpu_device: Optional[int] = environ.get("CUDA_VISIBLE_DEVICES", 0)
     warm_up_steps: int = 1000
     r_drop: bool = False
     r_alpha: int = 0
@@ -100,24 +109,26 @@ class NERTrainingPipeline:
             training_arguments (TrainingArguments): arguments passed to training pipeline
         """
         self.arguments = training_arguments
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and training_arguments.use_gpu:
             self.device = torch.device(f"cuda:{training_arguments.gpu_device}")
         else:
             self.device = torch.device("cpu")
         self.label2id = training_arguments.label2id
         self.id2label = {id: label for label, id in self.label2id.items()}
         self.tensorboard_writter = SummaryWriter(training_arguments.tensorboard_log_dir)
+        self.model_collection = training_arguments.model.value
 
     def tokenize(self):
         logger.info("tokenize data")
-        self.model_config = DistilBertConfig.from_pretrained(
-            self.arguments.model_name_or_path,
+
+        self.model_config = self.model_collection.config.from_pretrained(
+            self.arguments.model_weight_name,
             label2id=self.label2id,
             id2label=self.id2label,
             num_labels=len(self.id2label),
             **self.arguments.addtional_model_config,
         )
-        tokenizer = DistilBertTokenizerFast.from_pretrained(
+        tokenizer = self.model_collection.tokenizer.from_pretrained(
             self.arguments.tokenizer_name,
         )
         self.train_encodings = tokenizer(
@@ -181,8 +192,8 @@ class NERTrainingPipeline:
 
     def fine_tune(self):
         logger.info("start fine tune")
-        self.classifier = DistilBertForTokenClassification.from_pretrained(
-            self.arguments.model_name_or_path,
+        self.classifier = self.model_collection.model.from_pretrained(
+            self.arguments.model_weight_name,
             config=self.model_config,
         )
         self.classifier.to(self.device)
@@ -292,6 +303,7 @@ class NERTrainingPipeline:
                     encoded_labels.append(doc_enc_labels.tolist())
                 except ValueError as e:
                     logger.warning(f"error encoding: {str(e)}")
+                    logger.warning(f"tags: {doc_labels}")
                 pbar.update(1)
 
         return encoded_labels

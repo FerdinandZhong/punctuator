@@ -139,3 +139,7 @@ distilbert_punctuator_zh
 distilbert_punctuator_zh/**
 runs/**
 */runs/**
+
+data/**
+notebooks/**
+

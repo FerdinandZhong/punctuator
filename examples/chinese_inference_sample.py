@@ -35,7 +35,7 @@ long_text = [
 
 if __name__ == "__main__":
     args = InferenceArguments(
-        model_name_or_path="Qishuai/distilbert_punctuator_zh",
+        model_weight_name="Qishuai/distilbert_punctuator_zh",
         tokenizer_name="Qishuai/distilbert_punctuator_zh",
         tag2punctuator=DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP,
     )

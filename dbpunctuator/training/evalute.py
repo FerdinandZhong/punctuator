@@ -11,9 +11,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
 
-from dbpunctuator.utils import NORMAL_TOKEN_TAG
-
 from .punctuation_data_process import EncodingDataset
+from dbpunctuator.utils import Models, ModelCollection
 
 logger = logging.getLogger(__name__)
 
@@ -24,36 +23,41 @@ class EvaluationArguments(BaseModel):
     Args:
         evaluation_corpus(List[List[str]]): list of sequences for evaluation, longest sequence should be no longer than pretrained LM's max_position_embedding(512) # noqa: E501
         evaluation_tags(List[List[int]]): tags(int) for evaluation (the GT)
-        model_name_or_path(str): name or path of fine-tuned model
+        model_weight_name(str): name or path of fine-tuned model
+        model(Optional(enum)): model selected from Enum Models, default is "DISTILBERT"
         tokenizer_name(str): name of tokenizer
         batch_size(int): batch size
+        use_gpu(Optional[bool]): whether to use gpu for training, default is "True"
         label2id(Optional[Dict]): label2id. Default one is from model config. Pass in this argument if your model doesn't have a label2id inside config # noqa: E501
-        gpu_device(int): specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
+        gpu_device(Optional[int]): specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
     """
 
     evaluation_corpus: List[List[str]]
     evaluation_tags: List[List[int]]
-    model_name_or_path: str
+    model_weight_name: str
+    model: Optional[Models] = Models.DISTILBERT
     tokenizer_name: str
     batch_size: int
+    use_gpu: Optional[bool] = True
     label2id: Optional[Dict]
-    gpu_device: int = environ.get("CUDA_VISIBLE_DEVICES", 0)
+    gpu_device: Optional[int] = environ.get("CUDA_VISIBLE_DEVICES", 0)
 
 
 class EvaluationPipeline:
     def __init__(self, validation_arguments) -> None:
         self.arguments = validation_arguments
 
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and validation_arguments.use_gpu:
             self.device = torch.device(f"cuda:{validation_arguments.gpu_device}")
         else:
             self.device = torch.device("cpu")
 
-        self.tokenizer = DistilBertTokenizerFast.from_pretrained(
-            validation_arguments.tokenizer_name
+        model_collection = validation_arguments.model.value
+        self.tokenizer = model_collection.tokenizer.from_pretrained(
+            self.arguments.tokenizer_name
         )
-        self.classifier = DistilBertForTokenClassification.from_pretrained(
-            validation_arguments.model_name_or_path
+        self.classifier = model_collection.model.from_pretrained(
+            validation_arguments.model_weight_name
         ).to(self.device)
         if validation_arguments.label2id:
             self.label2id = validation_arguments.label2id
@@ -62,10 +66,8 @@ class EvaluationPipeline:
 
     def tokenize(self):
         logger.info("tokenize data")
-        tokenizer = DistilBertTokenizerFast.from_pretrained(
-            self.arguments.tokenizer_name
-        )
-        self.encodings = tokenizer(
+        
+        self.encodings = self.tokenizer(
             self.arguments.evaluation_corpus,
             is_split_into_words=True,
             return_offsets_mapping=True,
@@ -118,9 +120,9 @@ class EvaluationPipeline:
         tested_labels = []
         target_names = []
         for label, id in self.label2id.items():
-            if label != NORMAL_TOKEN_TAG:
-                tested_labels.append(id)
-                target_names.append(label)
+            # if label != NORMAL_TOKEN_TAG:
+            tested_labels.append(id)
+            target_names.append(label)
         report = classification_report(
             total_labels,
             total_preds,

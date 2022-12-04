@@ -10,6 +10,7 @@ import torch
 from plane.pattern import EMAIL, TELEPHONE
 from pydantic import BaseModel
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
+from dbpunctuator.utils import Models
 
 from dbpunctuator.utils import (
     CURRENCY,
@@ -53,8 +54,9 @@ class InferenceArguments(BaseModel):
     """Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
 
     Args:
-        model_name_or_path(str): name or path of pre-trained model
+        model_weight_name(str): name or path of pre-trained model
         tokenizer_name(str): name of pretrained tokenizer
+        model(Optional(enum)): model selected from Enum Models, default is "DISTILBERT"
         tag2punctuator(Dict[str, tuple]): tag to punctuator mapping.
             dbpunctuator.utils provides two mappings for English and Chinese
                 NORMAL_TOKEN_TAG = "O"
@@ -76,14 +78,17 @@ class InferenceArguments(BaseModel):
                 }
             for own fine-tuned model with different tags, pass in your own mapping
         tag2id_storage_path(Optional[str]): tag2id storage path. Default one is from model config. Pass in this argument if your model doesn't have a tag2id inside config # noqa: E501
-        gpu_device(int): specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
+        use_gpu(Optional[bool]): whether to use gpu for training, default is "True"
+        gpu_device(Optional[int]): specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
     """
 
-    model_name_or_path: str
+    model_weight_name: str
     tokenizer_name: str
+    model: Optional[Models] = Models.DISTILBERT
     tag2punctuator: Dict[str, tuple]
     tag2id_storage_path: Optional[str]
-    gpu_device: int = environ.get("CUDA_VISIBLE_DEVICES", 0)
+    use_gpu: Optional[bool] = True
+    gpu_device: Optional[int] = environ.get("CUDA_VISIBLE_DEVICES", 0)
 
 
 # whole pipeline running in the seperate process, provide a function for user to call, use socket for communication
@@ -91,17 +96,18 @@ class InferencePipeline:
     """Pipeline for inference"""
 
     def __init__(self, inference_arguments, verbose=False):
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and inference_arguments.use_gpu:
             self.device = torch.device(f"cuda:{inference_arguments.gpu_device}")
             logger.info(f"device type: {self.device.type}")
         else:
             self.device = torch.device("cpu")
 
-        self.tokenizer = DistilBertTokenizerFast.from_pretrained(
+        model_collection = inference_arguments.model.value
+        self.tokenizer = model_collection.tokenizer.from_pretrained(
             inference_arguments.tokenizer_name
         )
-        self.classifier = DistilBertForTokenClassification.from_pretrained(
-            inference_arguments.model_name_or_path
+        self.classifier = model_collection.model.from_pretrained(
+            inference_arguments.model_weight_name
         ).to(self.device)
         if inference_arguments.tag2id_storage_path:
             with open(inference_arguments.tag2id_storage_path, "r") as fp:

@@ -49,7 +49,7 @@ long_test_text = [
 
 if __name__ == "__main__":
     args = InferenceArguments(
-        model_name_or_path="Qishuai/distilbert_punctuator_en",
+        model_weight_name="Qishuai/distilbert_punctuator_en",
         tokenizer_name="Qishuai/distilbert_punctuator_en",
         tag2punctuator=DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP,
         gpu_device=1,
