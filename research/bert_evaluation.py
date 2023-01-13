@@ -1,14 +1,14 @@
 import logging
 
-from dbpunctuator.inference import InferenceArguments
-from dbpunctuator.inference.inference_pipeline import InferencePipeline
-from dbpunctuator.training import EvaluationArguments, EvaluationPipeline, process_data
-from dbpunctuator.utils.utils import register_logger
-from dbpunctuator.utils import Models
+from punctuator.inference import InferenceArguments
+from punctuator.inference.inference_pipeline import InferencePipeline
+from punctuator.training import EvaluationArguments, EvaluationPipeline, process_data
+from punctuator.utils.utils import register_logger
+from punctuator.utils import Models
 
 test_data_file_path = "data/IWSLT/formatted/test2011"
 
-with open(test_data_file_path, "r", encoding="ISO-8859-1") as file:
+with open(test_data_file_path, "r") as file:
     test_data = file.readlines()
 
 # must be exact same as model's config
@@ -30,30 +30,30 @@ evaluation_pipeline = EvaluationPipeline(evaluation_args)
 evaluation_pipeline.run()
 
 
-logger = logging.getLogger(__name__)
-register_logger(logger)
+# logger = logging.getLogger(__name__)
+# register_logger(logger)
 
-DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP = {
-    "O": ("", False),
-    "COMMA": (",", False),
-    "PERIOD": (".", True),
-    "QUESTION": ("?", True),
-}
+# DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP = {
+#     "O": ("", False),
+#     "COMMA": (",", False),
+#     "PERIOD": (".", True),
+#     "QUESTION": ("?", True),
+# }
 
-args = InferenceArguments(
-    model=Models.BERT,
-    model_weight_name="models/iwslt_bert_finetune",
-    tokenizer_name="bert-large-uncased",
-    tag2punctuator=DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP,
-    use_gpu=False
-)
+# args = InferenceArguments(
+#     model=Models.BERT,
+#     model_weight_name="models/iwslt_bert_finetune",
+#     tokenizer_name="bert-large-uncased",
+#     tag2punctuator=DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP,
+#     use_gpu=False
+# )
 
-inference = InferencePipeline(args, verbose=True)
+# inference = InferencePipeline(args, verbose=True)
 
 
-test_texts_1 = [
-    "how are you its been ten years since we met in shanghai i'm really happy to meet you again whats your current phone number",  # noqa: E501
-    "my number is 82732212",
-]
+# test_texts_1 = [
+#     "how are you its been ten years since we met in shanghai i'm really happy to meet you again whats your current phone number",  # noqa: E501
+#     "my number is 82732212",
+# ]
 
-inference.punctuation(test_texts_1)
+# inference.punctuation(test_texts_1)

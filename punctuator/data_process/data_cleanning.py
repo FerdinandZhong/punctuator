@@ -5,11 +5,11 @@ from plane import replace
 from plane.pattern import EMAIL, TELEPHONE
 from tqdm import tqdm
 
-from dbpunctuator.utils import (
+from punctuator.utils import (
     CURRENCY,
     CURRENCY_TOKEN,
     EMAIL_TOKEN,
-    NUMBER,
+    LONGNUMBER,
     NUMBER_TOKEN,
     TELEPHONE_TOKEN,
     URL,
@@ -51,7 +51,7 @@ def dataframe_data_cleaning(
 
     logger.info("replace number with <NUM>")
     df[target_col] = df[target_col].progress_apply(
-        lambda x: replace(x, NUMBER, NUMBER_TOKEN)
+        lambda x: replace(x, LONGNUMBER, NUMBER_TOKEN)
     )
 
     translator = str.maketrans({key: None for key in removed_punctuations})
@@ -93,7 +93,7 @@ def text_lines_cleaning(
 
         line = replace(line, TELEPHONE, TELEPHONE_TOKEN)
 
-        line = replace(line, NUMBER, NUMBER_TOKEN)
+        line = replace(line, LONGNUMBER, NUMBER_TOKEN)
 
         translator = str.maketrans({key: None for key in removed_punctuations})
         space_translator = str.maketrans(

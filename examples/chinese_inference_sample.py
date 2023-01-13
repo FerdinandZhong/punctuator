@@ -1,8 +1,8 @@
 import logging
 
-from dbpunctuator.inference import Inference, InferenceArguments
-from dbpunctuator.utils import ALL_PUNCS, DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP
-from dbpunctuator.utils.utils import register_logger
+from punctuator.inference import Inference, InferenceArguments
+from punctuator.utils import ALL_PUNCS, DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP
+from punctuator.utils.utils import register_logger
 
 logger = logging.getLogger(__name__)
 register_logger(logger)

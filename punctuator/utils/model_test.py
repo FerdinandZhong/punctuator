@@ -4,7 +4,7 @@ import torch
 from pydantic import BaseModel
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
 
-from dbpunctuator.utils.utils import register_logger
+from punctuator.utils.utils import register_logger
 
 logger = logging.getLogger(__name__)
 register_logger(logger)

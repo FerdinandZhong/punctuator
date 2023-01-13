@@ -2,9 +2,9 @@ import re
 
 import pandas as pd
 
-from dbpunctuator.data_process import cleanup_data_from_csv, generate_corpus
-from dbpunctuator.training import EvaluationArguments, EvaluationPipeline, process_data
-from dbpunctuator.utils import DEFAULT_ENGLISH_NER_MAPPING, remove_brackets_text
+from punctuator.data_process import cleanup_data_from_csv, generate_corpus
+from punctuator.training import EvaluationArguments, EvaluationPipeline, process_data
+from punctuator.utils import DEFAULT_ENGLISH_NER_MAPPING, remove_brackets_text
 
 
 def lower_input(input):

@@ -5,7 +5,7 @@ from typing import List
 import pandas as pd
 from tqdm import tqdm
 
-from dbpunctuator.utils import ALL_PUNCS, DEFAULT_ENGLISH_NER_MAPPING, NORMAL_TOKEN_TAG
+from punctuator.utils import ALL_PUNCS, DEFAULT_ENGLISH_NER_MAPPING, NORMAL_TOKEN_TAG
 
 from .data_cleanning import (
     cleaning_validator,

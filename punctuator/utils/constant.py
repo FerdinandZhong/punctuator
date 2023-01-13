@@ -4,11 +4,11 @@ import unicodedata
 from plane import build_new_regex
 
 NORMAL_TOKEN_TAG = "O"
-EMAIL_TOKEN = "<EMAIL>"
-URL_TOKEN = "<URL>"
-TELEPHONE_TOKEN = "<TEL>"
-CURRENCY_TOKEN = "<CURRENCY>"
-NUMBER_TOKEN = "<NUM>"
+EMAIL_TOKEN = "EMAIL"
+URL_TOKEN = "URL"
+TELEPHONE_TOKEN = "TEL"
+CURRENCY_TOKEN = "CURRENCY"
+NUMBER_TOKEN = "DIGIT"
 URL = build_new_regex(
     "url_checking",
     r"https?:\/\/[!-~]+|[!-~]+\.[-_a-z/]+",
@@ -66,7 +66,8 @@ CURRENCY = build_new_regex(
     "currency", r"(\{})\d+([.,]?\d*)*([A-Za-z]+)?".format(currency_list)
 )
 
-NUMBER = build_new_regex("number", r"[0-9]*[.]?[0-9]+[%]?")
+LONGNUMBER = build_new_regex("number", r"[0-9]{3,}|[0-9]*[.,][0-9]*[%]?")
+
 # byte format
 NUM_BYTE_FORMAT = "!H"
 LENGTH_BYTE_FORMAT = "!I"

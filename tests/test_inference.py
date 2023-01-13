@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from dbpunctuator.inference import Inference, InferenceArguments
-from dbpunctuator.utils import DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP
+from punctuator.inference import Inference, InferenceArguments
+from punctuator.utils import DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP
 from tests.common import cleaned_data, processed_data  # noqa: F401
 
 testing_args = InferenceArguments(

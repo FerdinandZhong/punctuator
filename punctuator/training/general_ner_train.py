@@ -1,6 +1,6 @@
 import logging
 import time
-from os import environ
+import os
 from typing import Dict, List, Optional, Union
 
 import numpy as np
@@ -21,7 +21,7 @@ from transformers import (
     BertTokenizerFast,
     get_constant_schedule_with_warmup,
 )
-from dbpunctuator.utils import ModelCollection, Models
+from punctuator.utils import ModelCollection, Models
 from enum import Enum
 from collections import namedtuple
 
@@ -90,7 +90,7 @@ class NERTrainingArguments(BaseModel):
     label2id: Dict
     early_stop_count: Optional[int] = 3
     use_gpu: Optional[bool] = True
-    gpu_device: Optional[int] = environ.get("CUDA_VISIBLE_DEVICES", 0)
+    gpu_device: Optional[int] = os.environ.get("CUDA_VISIBLE_DEVICES", 0)
     warm_up_steps: int = 1000
     r_drop: bool = False
     r_alpha: int = 0
@@ -109,35 +109,49 @@ class NERTrainingPipeline:
             training_arguments (TrainingArguments): arguments passed to training pipeline
         """
         self.arguments = training_arguments
-        if torch.cuda.is_available() and training_arguments.use_gpu:
-            self.device = torch.device(f"cuda:{training_arguments.gpu_device}")
-        else:
-            self.device = torch.device("cpu")
+
         self.label2id = training_arguments.label2id
         self.id2label = {id: label for label, id in self.label2id.items()}
         self.tensorboard_writter = SummaryWriter(training_arguments.tensorboard_log_dir)
-        self.model_collection = training_arguments.model.value
 
-    def tokenize(self):
-        logger.info("tokenize data")
+        model_collection = training_arguments.model.value
 
-        self.model_config = self.model_collection.config.from_pretrained(
-            self.arguments.model_weight_name,
+        self.model_config = model_collection.config.from_pretrained(
+            training_arguments.model_weight_name,
             label2id=self.label2id,
             id2label=self.id2label,
             num_labels=len(self.id2label),
-            **self.arguments.addtional_model_config,
+            **training_arguments.addtional_model_config,
         )
-        tokenizer = self.model_collection.tokenizer.from_pretrained(
-            self.arguments.tokenizer_name,
+        self.tokenizer = model_collection.tokenizer.from_pretrained(
+            training_arguments.tokenizer_name
         )
-        self.train_encodings = tokenizer(
+        self.classifier = model_collection.model.from_pretrained(
+            training_arguments.model_weight_name,
+            config=self.model_config,
+        )
+
+        if torch.cuda.is_available() and training_arguments.use_gpu:
+            self.device = torch.device(f"cuda:{training_arguments.gpu_device}")
+            if torch.cuda.device_count() > 1:
+                self.classifier = torch.nn.DataParallel(self.classifier)
+                self.classifier.cuda()
+            else:
+                self.classifier.to(self.device)
+
+        else:
+            self.device = torch.device("cpu")
+        
+    def tokenize(self):
+        logger.info("tokenize data")
+        
+        self.train_encodings = self.tokenizer(
             self.arguments.training_corpus,
             is_split_into_words=True,
             return_offsets_mapping=True,
             padding=True,
         )
-        self.val_encodings = tokenizer(
+        self.val_encodings = self.tokenizer(
             self.arguments.validation_corpus,
             is_split_into_words=True,
             return_offsets_mapping=True,
@@ -162,6 +176,17 @@ class NERTrainingPipeline:
                 )
             )
         ]
+        # weights = [
+        #     weight
+        #     for weight in np.log(
+        #         class_weight.compute_class_weight(
+        #             "balanced", classes=list(unique_tag_ids), y=all_ner_tag_ids
+        #         )
+        #     )
+        # ]
+        # weights = class_weight.compute_class_weight(
+        #     "balanced", classes=list(unique_tag_ids), y=all_ner_tag_ids
+        # )
         logger.info(
             f"class weights: {[round(weight, 2) for weight in weights]}, id2label: {self.id2label}"
         )
@@ -192,11 +217,6 @@ class NERTrainingPipeline:
 
     def fine_tune(self):
         logger.info("start fine tune")
-        self.classifier = self.model_collection.model.from_pretrained(
-            self.arguments.model_weight_name,
-            config=self.model_config,
-        )
-        self.classifier.to(self.device)
 
         train_loader = DataLoader(
             self.training_dataset, batch_size=self.arguments.batch_size, shuffle=True
@@ -257,7 +277,10 @@ class NERTrainingPipeline:
 
                 if val_loss < best_valid_loss:
                     best_valid_loss = val_loss
-                    self.best_state_dict = self.classifier.state_dict()
+                    try:
+                        self.best_state_dict = self.classifier.module.state_dict()
+                    except AttributeError:
+                        self.best_state_dict = self.classifier.state_dict()
                     no_improvement_count = 0
                 else:
                     no_improvement_count += 1
@@ -281,8 +304,11 @@ class NERTrainingPipeline:
 
         logger.info("persist fine-tuned model")
 
-        self.classifier.load_state_dict(self.best_state_dict)
-        self.classifier.save_pretrained(self.arguments.model_storage_dir)
+        # self.classifier.load_state_dict(self.best_state_dict)
+        # self.classifier.save_pretrained(self.arguments.model_storage_dir)
+
+        self.model_config.save_pretrained(self.arguments.model_storage_dir)
+        torch.save(self.best_state_dict, os.path.join(self.arguments.model_storage_dir, "pytorch_model.bin"))
 
         logger.info(f"fine-tuned model stored to {self.arguments.model_storage_dir}")
 

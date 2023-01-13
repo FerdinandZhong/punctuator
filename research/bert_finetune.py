@@ -1,19 +1,19 @@
-from dbpunctuator.training import (
+from punctuator.training import (
     NERTrainingArguments,
     NERTrainingPipeline,
     process_data,
 )
-from dbpunctuator.utils import (
+from punctuator.utils import (
     Models
 )
 
 training_data_file_path = "data/IWSLT/formatted/train2012"
 eval_data_file_path = "data/IWSLT/formatted/dev2012"
 
-with open(training_data_file_path, "r", encoding="ISO-8859-1") as file:
+with open(training_data_file_path, "r") as file:
     training_raw = file.readlines()
 
-with open(eval_data_file_path, "r", encoding="ISO-8859-1") as file:
+with open(eval_data_file_path, "r") as file:
     val_raw = file.readlines()
 
 
@@ -41,13 +41,13 @@ training_args = NERTrainingArguments(
     tokenizer_name="bert-large-uncased",
     epoch=40,
     batch_size=16,
-    model_storage_dir="models/iwslt_bert_finetune",
+    model_storage_dir="models/iwslt_bert_finetune_rdrop",
     addtional_model_config={"dropout": 0.3, "attention_dropout": 0.3},
     gpu_device=0,
     warm_up_steps=1000,
-    r_drop=False,
-    r_alpha=0.2,
-    tensorboard_log_dir="runs/iwslt_bert_finetune",
+    r_drop=True,
+    r_alpha=0.5,
+    tensorboard_log_dir="runs/iwslt_bert_finetune_rdrop",
     label2id=label2id,
     early_stop_count=5,
 )

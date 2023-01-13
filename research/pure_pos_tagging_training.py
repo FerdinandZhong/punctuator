@@ -1,16 +1,21 @@
+from punctuator.training.pos_ner_train import (
+    PosNERTrainingArguments,
+    PosNERTrainingPipeline,
+)
 from punctuator.training import (
-    NERTrainingArguments,
-    NERTrainingPipeline,
     process_data,
+)
+from punctuator.utils import (
+    Models
 )
 
 training_data_file_path = "data/IWSLT/formatted/train2012"
 eval_data_file_path = "data/IWSLT/formatted/dev2012"
 
-with open(training_data_file_path, "r", encoding="ISO-8859-1") as file:
+with open(training_data_file_path, "r") as file:
     training_raw = file.readlines()
 
-with open(eval_data_file_path, "r", encoding="ISO-8859-1") as file:
+with open(eval_data_file_path, "r") as file:
     val_raw = file.readlines()
 
 
@@ -28,25 +33,28 @@ label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
 training_tags = [[label2id[tag] for tag in doc] for doc in training_tags]
 validation_tags = [[label2id[tag] for tag in doc] for doc in validation_tags]
 
-training_args = NERTrainingArguments(
+training_args = PosNERTrainingArguments(
     training_corpus=training_corpus,
     validation_corpus=validation_corpus,
     training_tags=training_tags,
     validation_tags=validation_tags,
-    model_weight_name="distilbert-base-uncased",
-    tokenizer_name="distilbert-base-uncased",
-    epoch=20,
-    batch_size=64,
-    model_storage_dir="models/iwslt_distilbert",
+    model=Models.BERT,
+    model_weight_name="bert-large-uncased",
+    tokenizer_name="bert-large-uncased",
+    epoch=40,
+    batch_size=16,
+    model_storage_dir="models/iwslt_pure_pos_tagging",
     addtional_model_config={"dropout": 0.3, "attention_dropout": 0.3},
-    gpu_device=0,
-    warm_up_steps=500,
+    warm_up_steps=1000,
     r_drop=False,
-    r_alpha=0.2,
-    tensorboard_log_dir="runs/iwslt_distilbert",
+    r_alpha=0.5,
+    tensorboard_log_dir="runs/iwslt_pure_pos_tagging",
     label2id=label2id,
-    early_stop_count=3,
+    early_stop_count=5,
+    gpu_device=2,
+    training_pos_tagging_path="data/IWSLT/formatted/postagging_train",
+    val_pos_tagging_path="data/IWSLT/formatted/postagging_val"
 )
 
-training_pipeline = NERTrainingPipeline(training_args)
+training_pipeline = PosNERTrainingPipeline(training_args)
 training_pipeline.run()

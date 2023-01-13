@@ -3,9 +3,9 @@ import unicodedata
 
 from plane import CJK
 
-from dbpunctuator.data_process import clean_up_data_from_txt, generate_corpus
-from dbpunctuator.training import EvaluationArguments, EvaluationPipeline, process_data
-from dbpunctuator.utils import (
+from punctuator.data_process import clean_up_data_from_txt, generate_corpus
+from punctuator.training import EvaluationArguments, EvaluationPipeline, process_data
+from punctuator.utils import (
     DEFAULT_CHINESE_NER_MAPPING,
     chinese_split,
     remove_brackets_text,

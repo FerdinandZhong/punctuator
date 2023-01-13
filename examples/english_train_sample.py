@@ -1,4 +1,4 @@
-from dbpunctuator.training import (
+from punctuator.training import (
     NERTrainingArguments,
     NERTrainingPipeline,
     generate_training_data_splitting,

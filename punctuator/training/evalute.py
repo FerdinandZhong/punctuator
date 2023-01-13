@@ -12,7 +12,7 @@ from tqdm import tqdm
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
 
 from .punctuation_data_process import EncodingDataset
-from dbpunctuator.utils import Models, ModelCollection
+from punctuator.utils import Models, ModelCollection, NORMAL_TOKEN_TAG
 
 logger = logging.getLogger(__name__)
 
@@ -44,23 +44,23 @@ class EvaluationArguments(BaseModel):
 
 
 class EvaluationPipeline:
-    def __init__(self, validation_arguments) -> None:
-        self.arguments = validation_arguments
+    def __init__(self, evaluation_arguments) -> None:
+        self.arguments = evaluation_arguments
 
-        if torch.cuda.is_available() and validation_arguments.use_gpu:
-            self.device = torch.device(f"cuda:{validation_arguments.gpu_device}")
+        if torch.cuda.is_available() and evaluation_arguments.use_gpu:
+            self.device = torch.device(f"cuda:{evaluation_arguments.gpu_device}")
         else:
             self.device = torch.device("cpu")
 
-        model_collection = validation_arguments.model.value
+        model_collection = evaluation_arguments.model.value
         self.tokenizer = model_collection.tokenizer.from_pretrained(
             self.arguments.tokenizer_name
         )
         self.classifier = model_collection.model.from_pretrained(
-            validation_arguments.model_weight_name
+            evaluation_arguments.model_weight_name
         ).to(self.device)
-        if validation_arguments.label2id:
-            self.label2id = validation_arguments.label2id
+        if evaluation_arguments.label2id:
+            self.label2id = evaluation_arguments.label2id
         else:
             self.label2id = self.classifier.config.label2id
 
@@ -120,9 +120,9 @@ class EvaluationPipeline:
         tested_labels = []
         target_names = []
         for label, id in self.label2id.items():
-            # if label != NORMAL_TOKEN_TAG:
-            tested_labels.append(id)
-            target_names.append(label)
+            if label != NORMAL_TOKEN_TAG:
+                tested_labels.append(id)
+                target_names.append(label)
         report = classification_report(
             total_labels,
             total_preds,

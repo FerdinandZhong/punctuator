@@ -8,7 +8,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from dbpunctuator.utils import NORMAL_TOKEN_TAG
+from punctuator.utils import NORMAL_TOKEN_TAG
 
 PAD_TOKEN = "[PAD]"
 DEFAULT_LABEL_WEIGHT = 0.5
@@ -51,19 +51,33 @@ def _read_data(source_data, min_sequence_length, max_sequence_length) -> List[Li
             continue
         line_index += 1
         if line_index == target_sequence_length:
-            token_docs.append(token_doc)
-            tag_docs.append(tag_doc)
-            line_index = 0
+            try:
+                _verify_senquence(token_doc, min_sequence_length, max_sequence_length)
+                _verify_senquence(token_doc, min_sequence_length, max_sequence_length)
+                token_docs.append(token_doc)
+                tag_docs.append(tag_doc)
+                line_index = 0
+            except AssertionError:
+                logger.warning(f"error generating sequence: {token_doc}")
+                line_index = 0
+                continue
             pbar.update(target_sequence_length)
     token_doc += [PAD_TOKEN] * (target_sequence_length - line_index)
     tag_doc += [NORMAL_TOKEN_TAG] * (target_sequence_length - line_index)
-    token_docs.append(token_doc)
-    tag_docs.append(tag_doc)
-
+    try:
+        _verify_senquence(token_doc, min_sequence_length, max_sequence_length)
+        _verify_senquence(token_doc, min_sequence_length, max_sequence_length)
+        token_docs.append(token_doc)
+        tag_docs.append(tag_doc)
+    except AssertionError:
+        logger.warning(f"error generating sequence: {token_doc}")
+    
     pbar.close()
 
     return token_docs, tag_docs
 
+def _verify_senquence(sequence, min_sequence_length, max_sequence_length):
+    assert min_sequence_length <= len(sequence) and len(sequence) <= max_sequence_length, "wrong sequence length"
 
 def generate_punctuator_tag_mappings(tag_docs):
     """

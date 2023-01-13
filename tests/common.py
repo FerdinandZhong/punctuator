@@ -1,9 +1,9 @@
 import pandas as pd
 import pytest
 
-from dbpunctuator.data_process.data_cleanning import dataframe_data_cleaning
-from dbpunctuator.data_process.data_process import process_line
-from dbpunctuator.utils import (
+from punctuator.data_process.data_cleanning import dataframe_data_cleaning
+from punctuator.data_process.data_process import process_line
+from punctuator.utils import (
     ALL_PUNCS,
     DEFAULT_ENGLISH_NER_MAPPING,
     remove_brackets_text,

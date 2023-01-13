@@ -10,13 +10,13 @@ import torch
 from plane.pattern import EMAIL, TELEPHONE
 from pydantic import BaseModel
 from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
-from dbpunctuator.utils import Models
+from punctuator.utils import Models
 
-from dbpunctuator.utils import (
+from punctuator.utils import (
     CURRENCY,
     CURRENCY_TOKEN,
     EMAIL_TOKEN,
-    NUMBER,
+    LONGNUMBER,
     NUMBER_TOKEN,
     TELEPHONE_TOKEN,
     URL,
@@ -27,7 +27,7 @@ from dbpunctuator.utils import (
 
 logger = logging.getLogger(__name__)
 
-num_regex = re.compile(f"{NUMBER.pattern}")
+num_regex = re.compile(f"{LONGNUMBER.pattern}")
 tel_regex = re.compile(f"{TELEPHONE.pattern}")
 currency_regex = re.compile(f"{CURRENCY.pattern}")
 email_regex = re.compile(f"{EMAIL.pattern}")
