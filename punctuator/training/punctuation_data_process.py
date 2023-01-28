@@ -71,13 +71,17 @@ def _read_data(source_data, min_sequence_length, max_sequence_length) -> List[Li
         tag_docs.append(tag_doc)
     except AssertionError:
         logger.warning(f"error generating sequence: {token_doc}")
-    
+
     pbar.close()
 
     return token_docs, tag_docs
 
+
 def _verify_senquence(sequence, min_sequence_length, max_sequence_length):
-    assert min_sequence_length <= len(sequence) and len(sequence) <= max_sequence_length, "wrong sequence length"
+    assert (
+        min_sequence_length <= len(sequence) and len(sequence) <= max_sequence_length
+    ), "wrong sequence length"
+
 
 def generate_punctuator_tag_mappings(tag_docs):
     """

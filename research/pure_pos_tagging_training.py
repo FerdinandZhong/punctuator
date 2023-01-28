@@ -1,13 +1,9 @@
+from punctuator.training import process_data
 from punctuator.training.pos_ner_train import (
     PosNERTrainingArguments,
     PosNERTrainingPipeline,
 )
-from punctuator.training import (
-    process_data,
-)
-from punctuator.utils import (
-    Models
-)
+from punctuator.utils import Models
 
 training_data_file_path = "data/IWSLT/formatted/train2012"
 eval_data_file_path = "data/IWSLT/formatted/dev2012"
@@ -38,7 +34,7 @@ training_args = PosNERTrainingArguments(
     validation_corpus=validation_corpus,
     training_tags=training_tags,
     validation_tags=validation_tags,
-    model=Models.BERT,
+    model=Models.BERT_TOKEN_CLASSIFICATION,
     model_weight_name="bert-large-uncased",
     tokenizer_name="bert-large-uncased",
     epoch=40,
@@ -53,7 +49,7 @@ training_args = PosNERTrainingArguments(
     early_stop_count=5,
     gpu_device=2,
     training_pos_tagging_path="data/IWSLT/formatted/postagging_train",
-    val_pos_tagging_path="data/IWSLT/formatted/postagging_val"
+    val_pos_tagging_path="data/IWSLT/formatted/postagging_val",
 )
 
 training_pipeline = PosNERTrainingPipeline(training_args)

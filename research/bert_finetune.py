@@ -1,11 +1,5 @@
-from punctuator.training import (
-    NERTrainingArguments,
-    NERTrainingPipeline,
-    process_data,
-)
-from punctuator.utils import (
-    Models
-)
+from punctuator.training import NERTrainingArguments, NERTrainingPipeline, process_data
+from punctuator.utils import Models
 
 training_data_file_path = "data/IWSLT/formatted/train2012"
 eval_data_file_path = "data/IWSLT/formatted/dev2012"
@@ -36,7 +30,7 @@ training_args = NERTrainingArguments(
     validation_corpus=validation_corpus,
     training_tags=training_tags,
     validation_tags=validation_tags,
-    model=Models.BERT,
+    model=Models.BERT_TOKEN_CLASSIFICATION,
     model_weight_name="bert-large-uncased",
     tokenizer_name="bert-large-uncased",
     epoch=40,

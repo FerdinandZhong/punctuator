@@ -1,4 +1,4 @@
-PY_SOURCE_FILES=dbpunctuator/ examples/ tests/ research/ #this can be modified to include more files
+PY_SOURCE_FILES=punctuator/ examples/ tests/ research/ #this can be modified to include more files
 
 install: package
 	pip install -e .[dev,data_process,training]

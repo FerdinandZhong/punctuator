@@ -9,10 +9,10 @@ from sklearn.metrics import classification_report
 from torch._C import device  # noqa: F401
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
+
+from punctuator.utils import NORMAL_TOKEN_TAG, Models
 
 from .punctuation_data_process import EncodingDataset
-from punctuator.utils import Models, ModelCollection, NORMAL_TOKEN_TAG
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class EvaluationPipeline:
 
     def tokenize(self):
         logger.info("tokenize data")
-        
+
         self.encodings = self.tokenizer(
             self.arguments.evaluation_corpus,
             is_split_into_words=True,

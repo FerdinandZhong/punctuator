@@ -1,7 +1,7 @@
 import logging
-import time
 import os
-from typing import Dict, List, Optional, Union
+import time
+from typing import Dict, List, Optional
 
 import numpy as np
 import torch
@@ -11,19 +11,9 @@ from sklearn.utils import class_weight
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from transformers import (
-    AdamW,
-    DistilBertConfig,
-    DistilBertForTokenClassification,
-    DistilBertTokenizerFast,
-    BertConfig,
-    BertForTokenClassification,
-    BertTokenizerFast,
-    get_constant_schedule_with_warmup,
-)
-from punctuator.utils import ModelCollection, Models
-from enum import Enum
-from collections import namedtuple
+from transformers import AdamW, get_constant_schedule_with_warmup
+
+from punctuator.utils import Models
 
 logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 1
@@ -141,10 +131,10 @@ class NERTrainingPipeline:
 
         else:
             self.device = torch.device("cpu")
-        
+
     def tokenize(self):
         logger.info("tokenize data")
-        
+
         self.train_encodings = self.tokenizer(
             self.arguments.training_corpus,
             is_split_into_words=True,
@@ -308,7 +298,10 @@ class NERTrainingPipeline:
         # self.classifier.save_pretrained(self.arguments.model_storage_dir)
 
         self.model_config.save_pretrained(self.arguments.model_storage_dir)
-        torch.save(self.best_state_dict, os.path.join(self.arguments.model_storage_dir, "pytorch_model.bin"))
+        torch.save(
+            self.best_state_dict,
+            os.path.join(self.arguments.model_storage_dir, "pytorch_model.bin"),
+        )
 
         logger.info(f"fine-tuned model stored to {self.arguments.model_storage_dir}")
 

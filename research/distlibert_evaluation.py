@@ -1,9 +1,4 @@
-import logging
-
-from punctuator.inference import InferenceArguments
-from punctuator.inference.inference_pipeline import InferencePipeline
 from punctuator.training import EvaluationArguments, EvaluationPipeline, process_data
-from punctuator.utils.utils import register_logger
 
 test_data_file_path = "data/IWSLT/formatted/test2011"
 

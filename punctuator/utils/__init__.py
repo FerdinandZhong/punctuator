@@ -12,15 +12,15 @@ from .constant import (
     DEFAULT_ENGLISH_NER_MAPPING,
     DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP,
     EMAIL_TOKEN,
-    NORMAL_TOKEN_TAG,
     LONGNUMBER,
+    NORMAL_TOKEN_TAG,
     NUMBER_TOKEN,
     TELEPHONE_TOKEN,
     URL,
     URL_TOKEN,
 )
+from .model_zoo import ModelCollection, Models
 from .utils import is_ascii
-from .model_zoo import Models, ModelCollection
 
 __all__ = [
     "ALL_PUNCS",
@@ -42,5 +42,5 @@ __all__ = [
     "keep_only_latin_characters",
     "chinese_split",
     "Models",
-    "ModelCollection"
+    "ModelCollection",
 ]

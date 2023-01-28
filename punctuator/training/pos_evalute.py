@@ -1,23 +1,22 @@
-import logging
-from os import environ
-from typing import Dict, List, Optional
-import os
 import json
+import logging
+import os
+from typing import Dict, Optional
+
 import numpy as np
 import torch
-from pydantic import BaseModel
+import torch.nn.functional as F
+from flair.data import Sentence
+from flair.models import SequenceTagger
 from sklearn.metrics import classification_report
 from torch._C import device  # noqa: F401
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
-import torch.nn.functional as F
 
-from punctuator.utils import Models, ModelCollection, NORMAL_TOKEN_TAG
-from .evalute import EvaluationArguments, EvaluationPipeline
-from .pos_ner_train import PosTaggingModel, EncodingDataset, X_TAG
-from flair.models import SequenceTagger
-from flair.data import Sentence
+from punctuator.utils import NORMAL_TOKEN_TAG
+
+from .evalute import EvaluationArguments
+from .pos_ner_train import X_TAG, EncodingDataset, PosTaggingModel
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +32,12 @@ class PosEvaluationArguments(EvaluationArguments):
     test_pos_tagging_path: str
     pos_tagging: str = "flair/upos-english-fast"
     pos_tagging_embedding_dim: int = 512
-     
+
     # model args
     addtional_model_config: Optional[Dict]
 
-class PosEvaluationPipeline():
+
+class PosEvaluationPipeline:
     def __init__(self, evaluation_arguments) -> None:
         self.arguments = evaluation_arguments
         self.pos_tagger = SequenceTagger.load(evaluation_arguments.pos_tagging)
@@ -49,9 +49,11 @@ class PosEvaluationPipeline():
             pos_tag_size=tag_size,
             embedding_dim=evaluation_arguments.pos_tagging_embedding_dim,
             output_tag_size=len(evaluation_arguments.label2id),
-            dropout=evaluation_arguments.addtional_model_config["dropout"]
+            dropout=evaluation_arguments.addtional_model_config["dropout"],
         )
-        self.pos_tagging_model.load_state_dict(torch.load(f"{evaluation_arguments.model_weight_name}/pytorch_model.bin"))
+        self.pos_tagging_model.load_state_dict(
+            torch.load(f"{evaluation_arguments.model_weight_name}/pytorch_model.bin")
+        )
         model_collection = evaluation_arguments.model.value
 
         self.tokenizer = model_collection.tokenizer.from_pretrained(
@@ -86,20 +88,27 @@ class PosEvaluationPipeline():
                 sent = Sentence(sequence)
                 self.pos_tagger.predict(sent)
                 reduce_ignored_tokens = self._mark_ignored_tokens(encoding.offsets) >= 0
-                sent_tags = self.pos_tagging_dictionary.get_idx_for_items([entity.tag if reduce_ignored_tokens[e_index] else X_TAG for e_index, entity in enumerate(sent)])
+                sent_tags = self.pos_tagging_dictionary.get_idx_for_items(
+                    [
+                        entity.tag if reduce_ignored_tokens[e_index] else X_TAG
+                        for e_index, entity in enumerate(sent)
+                    ]
+                )
                 # print(tags)
                 self.test_pos_tags.append(sent_tags)
 
             with open(self.arguments.test_pos_tagging_path, "w") as jf:
                 json.dump(self.test_pos_tags, jf)
-        
-        self.dataset = EncodingDataset(self.encodings, self.test_pos_tags, self.evaluation_encoded_tags)
+
+        self.dataset = EncodingDataset(
+            self.encodings, self.test_pos_tags, self.evaluation_encoded_tags
+        )
 
         return self
 
     def tokenize(self):
         logger.info("tokenize data")
-        
+
         self.encodings = self.tokenizer(
             self.arguments.evaluation_corpus,
             is_split_into_words=True,
@@ -131,9 +140,7 @@ class PosEvaluationPipeline():
                 labels = batch["labels"].to(self.device)
                 attention_mask = batch["attention_mask"]
 
-                logits = self.pos_tagging_model(
-                    taggings
-                )
+                logits = self.pos_tagging_model(taggings)
                 logits = logits.view(-1, logits.size(-1))
                 print(logits)
                 loss = F.cross_entropy(

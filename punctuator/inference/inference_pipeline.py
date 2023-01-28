@@ -9,8 +9,6 @@ import numpy as np
 import torch
 from plane.pattern import EMAIL, TELEPHONE
 from pydantic import BaseModel
-from transformers import DistilBertForTokenClassification, DistilBertTokenizerFast
-from punctuator.utils import Models
 
 from punctuator.utils import (
     CURRENCY,
@@ -21,6 +19,7 @@ from punctuator.utils import (
     TELEPHONE_TOKEN,
     URL,
     URL_TOKEN,
+    Models,
     chinese_split,
     is_ascii,
 )

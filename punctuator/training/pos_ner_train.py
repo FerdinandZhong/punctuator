@@ -1,39 +1,25 @@
-import logging
-import time
-import os
 import json
-from typing import Dict, List, Optional, Union
+import logging
 import math
+import os
+import time
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pydantic import BaseModel
-from sklearn.utils import class_weight
-from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
-from transformers import (
-    AdamW,
-    DistilBertConfig,
-    DistilBertForTokenClassification,
-    DistilBertTokenizerFast,
-    BertConfig,
-    BertForTokenClassification,
-    BertTokenizerFast,
-    get_constant_schedule_with_warmup,
-)
-from punctuator.utils import ModelCollection, Models
-from enum import Enum
-from collections import namedtuple
-from .general_ner_train import NERTrainingArguments, NERTrainingPipeline
-from flair.models import SequenceTagger
 from flair.data import Sentence
+from flair.models import SequenceTagger
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers import AdamW, get_constant_schedule_with_warmup
+
 from .focal_loss import focal_loss
+from .general_ner_train import NERTrainingArguments, NERTrainingPipeline
 
 logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 0
-X_TAG = 'X'
+X_TAG = "X"
 
 
 class EncodingDataset:
@@ -53,10 +39,10 @@ class EncodingDataset:
 
 
 class FocalLoss(nn.CrossEntropyLoss):
-    ''' Focal loss for classification tasks on imbalanced datasets '''
+    """Focal loss for classification tasks on imbalanced datasets"""
 
-    def __init__(self, gamma, alpha=None, ignore_index=-100, reduction='none'):
-        super().__init__(weight=alpha, ignore_index=ignore_index, reduction='none')
+    def __init__(self, gamma, alpha=None, ignore_index=-100, reduction="none"):
+        super().__init__(weight=alpha, ignore_index=ignore_index, reduction="none")
         self.reduction = reduction
         self.gamma = gamma
 
@@ -68,48 +54,62 @@ class FocalLoss(nn.CrossEntropyLoss):
         target = target * (target != self.ignore_index).long()
         input_prob = torch.gather(F.softmax(input_, 1), 1, target.unsqueeze(1))
         loss = torch.pow(1 - input_prob, self.gamma) * cross_entropy
-        return torch.mean(loss) if self.reduction == 'mean' else torch.sum(loss) if self.reduction == 'sum' else loss
+        return (
+            torch.mean(loss)
+            if self.reduction == "mean"
+            else torch.sum(loss)
+            if self.reduction == "sum"
+            else loss
+        )
 
 
 class PositionalEncoding(nn.Module):
-
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
 
         position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model)
+        )
         pe = torch.zeros(max_len, 1, d_model)
         pe[:, 0, 0::2] = torch.sin(position * div_term)
         pe[:, 0, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)
+        self.register_buffer("pe", pe)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
             x: Tensor, shape [seq_len, batch_size, embedding_dim]
         """
-        x = x + self.pe[:x.size(0)]
+        x = x + self.pe[: x.size(0)]
         return self.dropout(x)
 
+
 class PosTaggingModel(nn.Module):
-    
-    def __init__(self, pos_tag_size, embedding_dim, output_tag_size, num_layer=6, num_head=8, dropout=0.3) -> None:
+    def __init__(
+        self,
+        pos_tag_size,
+        embedding_dim,
+        output_tag_size,
+        num_layer=6,
+        num_head=8,
+        dropout=0.3,
+    ) -> None:
         super().__init__()
-        self.model_type = 'Transformer'
+        self.model_type = "Transformer"
         self.embedding = nn.Embedding(
-            num_embeddings=pos_tag_size,
-            embedding_dim=embedding_dim
+            num_embeddings=pos_tag_size, embedding_dim=embedding_dim
         )
         self.pos_encoder = PositionalEncoding(embedding_dim, dropout)
 
         transformer_encoder_layer = nn.TransformerEncoderLayer(
-            d_model=embedding_dim,
-            nhead=num_head,
-            dropout=dropout
+            d_model=embedding_dim, nhead=num_head, dropout=dropout
         )
 
-        self.transformer_encoder = nn.TransformerEncoder(transformer_encoder_layer, num_layer)
+        self.transformer_encoder = nn.TransformerEncoder(
+            transformer_encoder_layer, num_layer
+        )
 
         self.output_layer = nn.Linear(embedding_dim, output_tag_size)
 
@@ -161,7 +161,7 @@ class PosNERTrainingPipeline(NERTrainingPipeline):
             pos_tag_size=tag_size,
             embedding_dim=training_arguments.pos_tagging_embedding_dim,
             output_tag_size=len(training_arguments.label2id),
-            dropout=training_arguments.addtional_model_config["dropout"]
+            dropout=training_arguments.addtional_model_config["dropout"],
         )
 
         if torch.cuda.is_available() and training_arguments.use_gpu:
@@ -191,7 +191,12 @@ class PosNERTrainingPipeline(NERTrainingPipeline):
                 sent = Sentence(sequence)
                 self.pos_tagger.predict(sent)
                 reduce_ignored_tokens = self._mark_ignored_tokens(encoding.offsets) >= 0
-                sent_tags = self.pos_tagging_dictionary.get_idx_for_items([entity.tag if reduce_ignored_tokens[e_index] else X_TAG for e_index, entity in enumerate(sent)])
+                sent_tags = self.pos_tagging_dictionary.get_idx_for_items(
+                    [
+                        entity.tag if reduce_ignored_tokens[e_index] else X_TAG
+                        for e_index, entity in enumerate(sent)
+                    ]
+                )
                 # print(tags)
                 self.train_pos_tags.append(sent_tags)
 
@@ -208,7 +213,12 @@ class PosNERTrainingPipeline(NERTrainingPipeline):
                 sent = Sentence(sequence)
                 self.pos_tagger.predict(sent)
                 reduce_ignored_tokens = self._mark_ignored_tokens(encoding.offsets) >= 0
-                sent_tags = self.pos_tagging_dictionary.get_idx_for_items([entity.tag if reduce_ignored_tokens[e_index] else X_TAG for e_index, entity in enumerate(sent)])
+                sent_tags = self.pos_tagging_dictionary.get_idx_for_items(
+                    [
+                        entity.tag if reduce_ignored_tokens[e_index] else X_TAG
+                        for e_index, entity in enumerate(sent)
+                    ]
+                )
                 # print(tags)
                 self.val_pos_tags.append(sent_tags)
 
@@ -216,7 +226,7 @@ class PosNERTrainingPipeline(NERTrainingPipeline):
                 json.dump(self.val_pos_tags, jf)
 
         return self
-        
+
     def generate_dataset(self):
         logger.info("generate dataset from tokenized data")
         self.train_encodings.pop("offset_mapping")
@@ -252,9 +262,7 @@ class PosNERTrainingPipeline(NERTrainingPipeline):
 
                 if self.arguments.r_drop:
 
-                    logits_1 = self.pos_tagging_model(
-                        taggings
-                    )
+                    logits_1 = self.pos_tagging_model(taggings)
                     logits_1 = logits_1.view(-1, logits_1.size(-1))
                     loss_1 = F.cross_entropy(
                         logits_1,
@@ -263,9 +271,7 @@ class PosNERTrainingPipeline(NERTrainingPipeline):
                         reduction="mean",
                     )
 
-                    logits_2 =  self.pos_tagging_model(
-                        taggings
-                    )
+                    logits_2 = self.pos_tagging_model(taggings)
                     logits_2 = logits_2.view(-1, logits_2.size(-1))
                     loss_2 = F.cross_entropy(
                         logits_2,
@@ -283,9 +289,7 @@ class PosNERTrainingPipeline(NERTrainingPipeline):
                     logits = logits_1.add(logits_2) / 2  # average over two logits
 
                 else:
-                    logits = self.pos_tagging_model(
-                        taggings
-                    )
+                    logits = self.pos_tagging_model(taggings)
                     logits = logits.view(-1, logits.size(-1))
                     # loss = F.cross_entropy(
                     #     logits,
@@ -293,11 +297,7 @@ class PosNERTrainingPipeline(NERTrainingPipeline):
                     #     weight=self.class_weights.to(self.device),
                     #     reduction="mean",
                     # )
-                    loss = self.focal_loss(
-                        logits,
-                        labels.view(-1)
-                    )
-                    
+                    loss = self.focal_loss(logits, labels.view(-1))
 
                 if not is_val:
                     loss.backward()
@@ -328,10 +328,7 @@ class PosNERTrainingPipeline(NERTrainingPipeline):
         logger.info("start pos tagging based training")
 
         self.focal_loss = focal_loss(
-            alpha=self.class_weights,
-            gamma=2,
-            reduction="mean",
-            device=self.device
+            alpha=self.class_weights, gamma=2, reduction="mean", device=self.device
         )
 
         train_loader = DataLoader(
@@ -394,7 +391,9 @@ class PosNERTrainingPipeline(NERTrainingPipeline):
                 if val_loss < best_valid_loss:
                     best_valid_loss = val_loss
                     try:
-                        self.best_state_dict = self.pos_tagging_model.module.state_dict()
+                        self.best_state_dict = (
+                            self.pos_tagging_model.module.state_dict()
+                        )
                     except AttributeError:
                         self.best_state_dict = self.pos_tagging_model.state_dict()
                     no_improvement_count = 0
@@ -509,7 +508,10 @@ class PosNERTrainingPipeline(NERTrainingPipeline):
 
         # self.model_config.save_pretrained(self.arguments.model_storage_dir)
         os.makedirs(self.arguments.model_storage_dir, exist_ok=True)
-        torch.save(self.best_state_dict, os.path.join(self.arguments.model_storage_dir, "pytorch_model.bin"))
+        torch.save(
+            self.best_state_dict,
+            os.path.join(self.arguments.model_storage_dir, "pytorch_model.bin"),
+        )
 
         logger.info(f"fine-tuned model stored to {self.arguments.model_storage_dir}")
 

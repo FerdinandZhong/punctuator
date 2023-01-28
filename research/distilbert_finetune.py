@@ -1,8 +1,4 @@
-from punctuator.training import (
-    NERTrainingArguments,
-    NERTrainingPipeline,
-    process_data,
-)
+from punctuator.training import NERTrainingArguments, NERTrainingPipeline, process_data
 
 training_data_file_path = "data/IWSLT/formatted/train2012"
 eval_data_file_path = "data/IWSLT/formatted/dev2012"

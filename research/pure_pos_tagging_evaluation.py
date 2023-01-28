@@ -1,10 +1,8 @@
-import logging
-
-from punctuator.inference import InferenceArguments
-from punctuator.inference.inference_pipeline import InferencePipeline
-from punctuator.training.pos_evalute import PosEvaluationArguments, PosEvaluationPipeline
 from punctuator.training import process_data
-from punctuator.utils.utils import register_logger
+from punctuator.training.pos_evalute import (
+    PosEvaluationArguments,
+    PosEvaluationPipeline,
+)
 from punctuator.utils import Models
 
 test_data_file_path = "data/IWSLT/formatted/test2011"
@@ -19,7 +17,7 @@ evaluation_tags = [[label2id[tag] for tag in doc] for doc in evaluation_tags]
 evaluation_args = PosEvaluationArguments(
     evaluation_corpus=evalution_corpus,
     evaluation_tags=evaluation_tags,
-    model=Models.BERT,
+    model=Models.BERT_TOKEN_CLASSIFICATION,
     model_weight_name="models/iwslt_pure_pos_tagging",
     tokenizer_name="bert-large-uncased",
     batch_size=16,
