@@ -1,4 +1,5 @@
-from punctuator.training import EvaluationArguments, EvaluationPipeline, process_data
+from punctuator.mlm_pretraining import EvaluationArguments, EvaluationPipeline
+from punctuator.training import process_data
 from punctuator.utils import Models
 
 test_data_file_path = "data/IWSLT/formatted/test2011"
@@ -8,17 +9,19 @@ with open(test_data_file_path, "r") as file:
 
 # must be exact same as model's config
 label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
-evalution_corpus, evaluation_tags = process_data(test_data, 256, 256)
+evalution_corpus, evaluation_tags = process_data(test_data, 128, 256)
 evaluation_tags = [[label2id[tag] for tag in doc] for doc in evaluation_tags]
 evaluation_args = EvaluationArguments(
     evaluation_corpus=evalution_corpus,
     evaluation_tags=evaluation_tags,
     model=Models.BERT_TOKEN_CLASSIFICATION,
-    model_weight_name="models/iwslt_bert_finetune_rdrop",
+    model_weight_path="models/pretraining_mlm/mixed_with_pretrained/bert_large_uncased",
+    model_weight_name="epoch_10_finetuned_model.bin",
     tokenizer_name="bert-large-uncased",
-    batch_size=16,
+    batch_size=32,
     gpu_device=0,
     label2id=label2id,
+    
 )
 
 evaluation_pipeline = EvaluationPipeline(evaluation_args)

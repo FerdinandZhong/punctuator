@@ -1,6 +1,9 @@
 import logging
+import random
 from typing import List
 
+import torch
+from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from punctuator.utils import NORMAL_TOKEN_TAG
@@ -11,7 +14,7 @@ SENTENCE_ENDINGS = ["PERIOD", "QUESTION"]
 logger = logging.getLogger(__name__)
 
 
-def _read_data(source_data, target_sequence_length) -> List[List]:
+def _read_data(source_data, min_target_length, max_target_length) -> List[List]:
     def read_line(text_line):
         return text_line.strip().split("\t")
 
@@ -40,9 +43,9 @@ def _read_data(source_data, target_sequence_length) -> List[List]:
             logger.warning(f"ignore the bad line: {line}, index: {index}")
             continue
         if (
-            len(token_doc) >= target_sequence_length
+            len(token_doc) >= min_target_length
             and processed_line[1] in SENTENCE_ENDINGS
-        ):
+        ) or len(token_doc) >= max_target_length:
             token_docs.append(token_doc)
             span_label_docs.append(span_label_doc)
             pbar.update(len(token_doc))
@@ -57,7 +60,7 @@ def _read_data(source_data, target_sequence_length) -> List[List]:
     return token_docs, span_label_docs
 
 
-def process_data(source_data, target_sequence_length):
+def process_data(source_data, min_target_length, max_target_length):
     """
     Function for generation of tokenized corpus and relevant tags
 
@@ -66,5 +69,36 @@ def process_data(source_data, target_sequence_length):
         target_sequence_length(int): target sequence length
     """
     logger.info("load data")
-    texts, span_labels = _read_data(source_data, target_sequence_length)
+    texts, span_labels = _read_data(source_data, min_target_length, max_target_length)
     return texts, span_labels
+
+
+class MaskedEncodingDataset(Dataset):
+    def __init__(self, masked_input_ids, encodings, span_labels, labels=None):
+        self.encodings = encodings
+        self.masked_encodings = encodings.copy()
+        self.masked_encodings["input_ids"] = masked_input_ids
+        self.span_labels = span_labels
+        self.labels = labels
+
+    def __getitem__(self, idx):
+        rand = random.uniform(0, 1)
+        # following the BERT's original pretraining method
+        if rand >= 0.2:
+            item = {
+                key: val[idx] if torch.is_tensor(val[idx]) else torch.tensor(val[idx])
+                for key, val in self.masked_encodings.items()
+            }
+        else:
+            item = {
+                key: val[idx] if torch.is_tensor(val[idx]) else torch.tensor(val[idx])
+                for key, val in self.encodings.items()
+            }
+        item["span_labels"] = torch.tensor(self.span_labels[idx]).type(torch.LongTensor)
+
+        if self.labels is not None:
+            item["labels"] = self.labels[idx] if torch.is_tensor(self.labels[idx]) else torch.tensor(self.labels[idx]).type(torch.LongTensor)
+        return item
+
+    def __len__(self):
+        return len(self.span_labels)

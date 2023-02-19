@@ -1,5 +1,4 @@
 import logging
-from random import randint
 from typing import List
 
 import numpy as np
@@ -8,11 +7,10 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-from punctuator.utils import NORMAL_TOKEN_TAG
-
 PAD_TOKEN = "[PAD]"
 DEFAULT_LABEL_WEIGHT = 0.5
 logger = logging.getLogger(__name__)
+SENTENCE_ENDINGS = ["PERIOD", "QUESTION"]
 
 
 def _read_data(source_data, min_sequence_length, max_sequence_length) -> List[List]:
@@ -31,15 +29,12 @@ def _read_data(source_data, min_sequence_length, max_sequence_length) -> List[Li
         with open(source_data, "r") as data_file:
             pbar = tqdm(data_file.readlines())
     for index, line in enumerate(pbar):
-        if line_index == 0:
-            token_doc = []
-            tag_doc = []
-            target_sequence_length = randint(min_sequence_length, max_sequence_length)
         if line == "\n":
             token_docs.append(token_doc)
             tag_docs.append(tag_doc)
-            line_index = 0
             pbar.update(len(token_doc))
+            token_doc = []
+            tag_doc = []
             continue
         processed_line = read_line(line)
         try:
@@ -50,25 +45,31 @@ def _read_data(source_data, min_sequence_length, max_sequence_length) -> List[Li
             logger.warning(f"ignore the bad line: {line}, index: {index}")
             continue
         line_index += 1
-        if line_index == target_sequence_length:
+        if (
+            len(token_doc) >= min_sequence_length
+            and processed_line[1] in SENTENCE_ENDINGS
+        ) or len(token_doc) >= max_sequence_length:
             try:
                 _verify_senquence(token_doc, min_sequence_length, max_sequence_length)
                 _verify_senquence(token_doc, min_sequence_length, max_sequence_length)
                 token_docs.append(token_doc)
                 tag_docs.append(tag_doc)
-                line_index = 0
+                token_doc = []
+                tag_doc = []
             except AssertionError:
                 logger.warning(f"error generating sequence: {token_doc}")
-                line_index = 0
+                token_doc = []
+                tag_doc = []
                 continue
-            pbar.update(target_sequence_length)
-    token_doc += [PAD_TOKEN] * (target_sequence_length - line_index)
-    tag_doc += [NORMAL_TOKEN_TAG] * (target_sequence_length - line_index)
+            pbar.update(len(token_doc))
     try:
-        _verify_senquence(token_doc, min_sequence_length, max_sequence_length)
-        _verify_senquence(token_doc, min_sequence_length, max_sequence_length)
+        _verify_senquence(token_doc, 0, max_sequence_length)
+        _verify_senquence(token_doc, 0, max_sequence_length)
         token_docs.append(token_doc)
         tag_docs.append(tag_doc)
+        token_docs.append(token_doc)
+        tag_docs.append(tag_doc)
+        pbar.update(len(token_doc))
     except AssertionError:
         logger.warning(f"error generating sequence: {token_doc}")
 

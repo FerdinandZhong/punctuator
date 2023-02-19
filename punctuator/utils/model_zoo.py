@@ -2,6 +2,8 @@ from collections import namedtuple
 from enum import Enum
 
 from transformers import (
+    AutoConfig,
+    AutoModel,
     BertConfig,
     BertForTokenClassification,
     BertModel,
@@ -22,3 +24,4 @@ class Models(Enum):
         BertConfig, BertTokenizerFast, BertForTokenClassification
     )
     BERT = ModelCollection(BertConfig, BertTokenizerFast, BertModel)
+    BERT_PRETRAINING = ModelCollection(AutoConfig, BertTokenizerFast, AutoModel)

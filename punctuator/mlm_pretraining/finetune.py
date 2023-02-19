@@ -15,27 +15,14 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AdamW, get_constant_schedule_with_warmup
 
+from punctuator.training.punctuation_data_process import EncodingDataset
 from punctuator.utils import Models, NORMAL_TOKEN_TAG
 
 logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 1
 
 
-class EncodingDataset:
-    def __init__(self, encodings, labels):
-        self.encodings = encodings
-        self.labels = labels
-
-    def __getitem__(self, idx):
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        item["labels"] = torch.tensor(self.labels[idx])
-        return item
-
-    def __len__(self):
-        return len(self.labels)
-
-
-class NERTrainingArguments(BaseModel):
+class FineTuneArguments(BaseModel):
     """Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
 
     Args:
@@ -71,9 +58,9 @@ class NERTrainingArguments(BaseModel):
     validation_corpus: List[List[str]]
     training_tags: List[List[int]]
     validation_tags: List[List[int]]
-    model_weight_name: str
+    plm_path: str
     tokenizer_name: str
-    model: Optional[Models] = Models.DISTILBERT
+    model: Optional[Models] = Models.BERT_TOKEN_CLASSIFICATION
 
     # training ars
     epoch: int
@@ -94,8 +81,8 @@ class NERTrainingArguments(BaseModel):
     addtional_model_config: Optional[Dict]
 
 
-class NERTrainingPipeline:
-    def __init__(self, training_arguments):
+class FinetunePipeline:
+    def __init__(self, training_arguments, verbose=False):
         """Training pipeline for fine-tuning the distilbert token classifier for punctuation
 
         Args:
@@ -109,31 +96,34 @@ class NERTrainingPipeline:
 
         model_collection = training_arguments.model.value
 
-        self.model_config = model_collection.config.from_pretrained(
-            training_arguments.model_weight_name,
+        self.finetuned_model_config = model_collection.config.from_pretrained(
+            training_arguments.plm_path,
             label2id=self.label2id,
             id2label=self.id2label,
             num_labels=len(self.id2label),
             **training_arguments.addtional_model_config,
         )
+        if verbose:
+            logger.info(f"Full model config: {self.finetuned_model_config}")
+
         self.tokenizer = model_collection.tokenizer.from_pretrained(
             training_arguments.tokenizer_name
         )
-        self.classifier = model_collection.model.from_pretrained(
-            training_arguments.model_weight_name,
-            config=self.model_config,
-        )
-
+        self.finetuned_model = model_collection.model(self.finetuned_model_config)
+        plm_weights_path = os.path.join(training_arguments.plm_path, "epoch_25_bert_only.bin")
+        self.finetuned_model.bert.load_state_dict(torch.load(plm_weights_path))
+        # plm_weights_path = os.path.join(self.arguments.plm_path, "finetuned_model.bin")
+        # self.finetuned_model.load_state_dict(torch.load(plm_weights_path))
 
         if torch.cuda.is_available() and training_arguments.use_gpu:
             if torch.cuda.device_count() > 1:
-                self.classifier = torch.nn.DataParallel(self.classifier)
-                self.classifier.cuda()
+                self.finetuned_model = torch.nn.DataParallel(self.finetuned_model)
+                self.finetuned_model.cuda()
                 self.device = torch.device("cuda")
                 self.is_parallel = True
             else:
                 self.device = torch.device(f"cuda:{training_arguments.gpu_device}")
-                self.classifier.to(self.device)
+                self.finetuned_model.to(self.device)
                 self.is_parallel = False
 
         else:
@@ -211,7 +201,7 @@ class NERTrainingPipeline:
         val_loader = DataLoader(
             self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True
         )
-        optim = AdamW(self.classifier.parameters(), lr=1e-5)
+        optim = AdamW(self.finetuned_model.parameters(), lr=1e-5)
 
         scheduler = get_constant_schedule_with_warmup(
             optim,
@@ -228,7 +218,7 @@ class NERTrainingPipeline:
 
                 start_time = time.time()
 
-                self.classifier.train()
+                self.finetuned_model.train()
 
                 train_loss, train_acc = self._train(train_loader, optim, scheduler)
                 val_loss, val_acc = self._train(val_loader, optim, scheduler, True)
@@ -270,10 +260,11 @@ class NERTrainingPipeline:
 
                 if val_loss < best_valid_loss:
                     best_valid_loss = val_loss
+                    logger.info(f"New best valid loss found: {best_valid_loss} in epoch {epoch + 1}")
                     if self.is_parallel:
-                        self.best_state_dict = self.classifier.module.state_dict()
+                        self.best_state_dict = self.finetuned_model.module.state_dict()
                     else:
-                        self.best_state_dict = self.classifier.state_dict()
+                        self.best_state_dict = self.finetuned_model.state_dict()
                     no_improvement_count = 0
                 else:
                     no_improvement_count += 1
@@ -294,14 +285,14 @@ class NERTrainingPipeline:
 
     def _intermediate_persist(self, epoch_index):
         if self.is_parallel:
-            persist_moodel = self.classifier.module
+            persist_moodel = self.finetuned_model.module
         else:
-            persist_moodel = self.classifier
+            persist_moodel = self.finetuned_model
         torch.save(
             persist_moodel.state_dict(),
             os.path.join(
                 self.arguments.model_storage_dir,
-                f"epoch_{epoch_index}_pytorch_model.bin",
+                f"epoch_{epoch_index}_finetuned_model.bin",
             ),
         )
 
@@ -313,10 +304,10 @@ class NERTrainingPipeline:
         # self.classifier.load_state_dict(self.best_state_dict)
         # self.classifier.save_pretrained(self.arguments.model_storage_dir)
 
-        self.model_config.save_pretrained(self.arguments.model_storage_dir)
+        self.finetuned_model_config.save_pretrained(self.arguments.model_storage_dir)
         torch.save(
             self.best_state_dict,
-            os.path.join(self.arguments.model_storage_dir, "pytorch_model.bin"),
+            os.path.join(self.arguments.model_storage_dir, "finetuned_model.bin"),
         )
 
         logger.info(f"fine-tuned model stored to {self.arguments.model_storage_dir}")
@@ -369,9 +360,9 @@ class NERTrainingPipeline:
         epoch_loss = 0
         epoch_acc = 0
         if is_val:
-            self.classifier.train(False)
+            self.finetuned_model.train(False)
         else:
-            self.classifier.train()
+            self.finetuned_model.train()
 
         in_epoch_steps = 0
 
@@ -389,7 +380,7 @@ class NERTrainingPipeline:
 
                 if self.arguments.r_drop:
 
-                    outputs_1 = self.classifier(
+                    outputs_1 = self.finetuned_model(
                         input_ids, attention_mask=attention_mask, labels=labels
                     )
                     logits_1 = outputs_1.logits
@@ -405,7 +396,7 @@ class NERTrainingPipeline:
                         reduction="mean",
                     )
 
-                    outputs_2 = self.classifier(
+                    outputs_2 = self.finetuned_model(
                         input_ids, attention_mask=attention_mask, labels=labels
                     )
                     logits_2 = outputs_2.logits
@@ -426,7 +417,7 @@ class NERTrainingPipeline:
                     logits = logits_1.add(logits_2) / 2  # average over two logits
 
                 else:
-                    outputs = self.classifier(
+                    outputs = self.finetuned_model(
                         input_ids, attention_mask=attention_mask, labels=labels
                     )
                     logits = outputs.logits
@@ -434,7 +425,7 @@ class NERTrainingPipeline:
                     loss = F.cross_entropy(
                         logits,
                         labels.view(-1),
-                        # weight=self.class_weights.to(self.device),
+                        weight=self.class_weights.to(self.device),
                         reduction="mean",
                     )
 
@@ -486,7 +477,7 @@ class NERTrainingPipeline:
                     zero_division=1,
                 )
                 logger.info(f"validation report: \n {report}")
-
+                
         return epoch_loss / in_epoch_steps, epoch_acc / in_epoch_steps
 
     def _epoch_time(self, start_time, end_time):
