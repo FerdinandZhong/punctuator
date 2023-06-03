@@ -14,12 +14,12 @@ with open(eval_data_file_path, "r") as file:
 (
     training_corpus,
     training_tags,
-) = process_data(training_raw, 256, 256)
+) = process_data(training_raw, 128)
 
 (
     validation_corpus,
     validation_tags,
-) = process_data(val_raw, 256, 256)
+) = process_data(val_raw, 128)
 
 label2id = {"O": 0, "PERIOD": 1, "QUESTION": 2}
 training_tags = [[label2id[tag] for tag in doc] for doc in training_tags]

@@ -7,15 +7,14 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from pydantic import BaseModel
-from sklearn.utils import class_weight
 from sklearn.metrics import classification_report
-
+from sklearn.utils import class_weight
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AdamW, get_constant_schedule_with_warmup
 
-from punctuator.utils import Models, NORMAL_TOKEN_TAG
+from punctuator.utils import NORMAL_TOKEN_TAG, Models
 
 logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 1
@@ -92,6 +91,7 @@ class NERTrainingArguments(BaseModel):
 
     # model args
     addtional_model_config: Optional[Dict]
+    additional_tokenizer_config: Optional[Dict] = {}
 
 
 class NERTrainingPipeline:
@@ -117,13 +117,13 @@ class NERTrainingPipeline:
             **training_arguments.addtional_model_config,
         )
         self.tokenizer = model_collection.tokenizer.from_pretrained(
-            training_arguments.tokenizer_name
+            training_arguments.tokenizer_name,
+            **training_arguments.additional_tokenizer_config,
         )
         self.classifier = model_collection.model.from_pretrained(
             training_arguments.model_weight_name,
             config=self.model_config,
         )
-
 
         if torch.cuda.is_available() and training_arguments.use_gpu:
             if torch.cuda.device_count() > 1:
@@ -181,10 +181,10 @@ class NERTrainingPipeline:
         self.class_weights = torch.tensor(weights, dtype=torch.float)
 
         self.train_encoded_tags = self._encode_tags(
-            self.arguments.training_tags, self.train_encodings
+            self.arguments.training_tags, self.train_encodings, self.arguments.training_corpus
         )
         self.validation_encoded_tags = self._encode_tags(
-            self.arguments.validation_tags, self.val_encodings
+            self.arguments.validation_tags, self.val_encodings, self.arguments.validation_corpus,
         )
 
         return self
@@ -321,11 +321,13 @@ class NERTrainingPipeline:
 
         logger.info(f"fine-tuned model stored to {self.arguments.model_storage_dir}")
 
-    def _encode_tags(self, tags, encodings):
+    def _encode_tags(self, tags, encodings, corpus):
         logger.info("encoding tags")
         encoded_labels = []
         with tqdm(total=len(tags)) as pbar:
-            for doc_labels, doc_offset in zip(tags, encodings.offset_mapping):
+            for doc_labels, doc_offset, sample in zip(
+                tags, encodings.offset_mapping, corpus
+            ):
                 try:
                     # create an empty array of -100
                     doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
@@ -339,6 +341,8 @@ class NERTrainingPipeline:
                 except ValueError as e:
                     logger.warning(f"error encoding: {str(e)}")
                     logger.warning(f"tags: {doc_labels}")
+                    logger.warning(f"sample: {sample}")
+                    raise e
                 pbar.update(1)
 
         return encoded_labels

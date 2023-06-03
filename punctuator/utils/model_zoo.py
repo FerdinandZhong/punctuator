@@ -11,6 +11,10 @@ from transformers import (
     DistilBertConfig,
     DistilBertForTokenClassification,
     DistilBertTokenizerFast,
+    RobertaConfig,
+    RobertaForTokenClassification,
+    RobertaModel,
+    RobertaTokenizerFast,
 )
 
 ModelCollection = namedtuple("ModelCollection", ["config", "tokenizer", "model"])
@@ -25,3 +29,7 @@ class Models(Enum):
     )
     BERT = ModelCollection(BertConfig, BertTokenizerFast, BertModel)
     BERT_PRETRAINING = ModelCollection(AutoConfig, BertTokenizerFast, AutoModel)
+    ROBERTA = ModelCollection(RobertaConfig, RobertaTokenizerFast, RobertaModel)
+    ROBERTA_TOKEN_CLASSIFICATION = ModelCollection(
+        RobertaConfig, RobertaTokenizerFast, RobertaForTokenClassification
+    )

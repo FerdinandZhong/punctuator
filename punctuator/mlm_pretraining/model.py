@@ -1,22 +1,18 @@
 import logging
 from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
-from transformers.models.bert.modeling_bert import (
-    BertLMPredictionHead,
-    BertModel,
-    BertPredictionHeadTransform,
-    BertPreTrainedModel,
-)
+from transformers.activations import ACT2FN
+from transformers.models.bert.modeling_bert import BertPreTrainedModel
 from transformers.utils import ModelOutput
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class BertForSpanPreTrainingOutput(ModelOutput):
+class SpanPreTrainingOutput(ModelOutput):
     loss: Optional[torch.FloatTensor] = None
     prediction_logits: torch.FloatTensor = None
     span_prediction_logits: torch.FloatTensor = None
@@ -24,10 +20,27 @@ class BertForSpanPreTrainingOutput(ModelOutput):
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
 
-class BertLMSpanPredictionHead(nn.Module):
+class PredictionHeadTransform(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.transform = BertPredictionHeadTransform(config)
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        if isinstance(config.hidden_act, str):
+            self.transform_act_fn = ACT2FN[config.hidden_act]
+        else:
+            self.transform_act_fn = config.hidden_act
+        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.transform_act_fn(hidden_states)
+        hidden_states = self.LayerNorm(hidden_states)
+        return hidden_states
+
+
+class LMSpanHead(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.transform = PredictionHeadTransform(config)
 
         # The output weights are the same as the input embeddings, but there is
         # an output-only bias for each token.
@@ -39,21 +52,49 @@ class BertLMSpanPredictionHead(nn.Module):
         return hidden_states
 
 
-class BertOnlySpanMLMHead(nn.Module):
+class OnlySpanMLMHead(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.span_predictions = BertLMSpanPredictionHead(config)
+        self.span_predictions = LMSpanHead(config)
 
     def forward(self, sequence_output: torch.Tensor) -> torch.Tensor:
         span_prediction_scores = self.span_predictions(sequence_output)
         return span_prediction_scores
 
 
-class BertMLMHeads(nn.Module):
+class LMHead(nn.Module):
+    """Head for masked language modeling."""
+
     def __init__(self, config):
         super().__init__()
-        self.span_predictions = BertLMSpanPredictionHead(config)
-        self.predictions = BertLMPredictionHead(config)
+        self.transform = PredictionHeadTransform(config)
+
+        self.decoder = nn.Linear(config.hidden_size, config.vocab_size)
+        self.bias = nn.Parameter(torch.zeros(config.vocab_size))
+        self.decoder.bias = self.bias
+
+    def forward(self, features, **kwargs):
+        x = self.transform(features)
+
+        # project back to size of vocabulary with bias
+        x = self.decoder(x)
+
+        return x
+
+    def _tie_weights(self):
+        # To tie those two weights if they get disconnected (on TPU or when the bias is resized)
+        # For accelerate compatibility and to not break backward compatibility
+        if self.decoder.bias.device.type == "meta":
+            self.decoder.bias = self.bias
+        else:
+            self.bias = self.decoder.bias
+
+
+class MLMHeads(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.span_predictions = LMSpanHead(config)
+        self.predictions = LMHead(config)
 
     def forward(self, sequence_output: torch.Tensor) -> torch.Tensor:
         span_prediction_scores = self.span_predictions(sequence_output)
@@ -61,16 +102,17 @@ class BertMLMHeads(nn.Module):
         return span_prediction_scores, prediction_scores
 
 
-class BertForSpanMaskedLM(BertPreTrainedModel):
-    def __init__(self, config, span_only=True):
+class SpanMaskedLM(BertPreTrainedModel):
+    def __init__(self, config, lm_model, span_only=True):
         super().__init__(config)
 
-        self.bert = BertModel(config, add_pooling_layer=False)
+        # self.encoder = BertModel(config, add_pooling_layer=False)
+        self.lm_model = lm_model
         self.span_only = span_only
         if span_only:
-            self.cls = BertOnlySpanMLMHead(config)
+            self.cls = OnlySpanMLMHead(config)
         else:
-            self.cls = BertMLMHeads(config)
+            self.cls = MLMHeads(config)
 
         # Initialize weights and apply final processing
         self.apply(self._init_weights)
@@ -89,8 +131,10 @@ class BertForSpanMaskedLM(BertPreTrainedModel):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        use_cache: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-    ) -> Union[Tuple[torch.Tensor], BertForSpanPreTrainingOutput]:
+    ) -> Union[Tuple[torch.Tensor], SpanPreTrainingOutput]:
         """One input_ids, two kinds of labels.
 
         Args:
@@ -115,7 +159,7 @@ class BertForSpanMaskedLM(BertPreTrainedModel):
             return_dict if return_dict is not None else self.config.use_return_dict
         )
 
-        outputs = self.bert(
+        outputs = self.lm_model(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
@@ -126,6 +170,8 @@ class BertForSpanMaskedLM(BertPreTrainedModel):
             encoder_attention_mask=encoder_attention_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            past_key_values=past_key_values,
+            use_cache=use_cache,
             return_dict=return_dict,
         )
 
@@ -146,7 +192,7 @@ class BertForSpanMaskedLM(BertPreTrainedModel):
                     else output
                 )
 
-            return BertForSpanPreTrainingOutput(
+            return SpanPreTrainingOutput(
                 loss=span_masked_lm_loss,
                 span_prediction_logits=span_prediction_scores,
                 hidden_states=outputs.hidden_states,
@@ -173,7 +219,7 @@ class BertForSpanMaskedLM(BertPreTrainedModel):
                     else output
                 )
 
-            return BertForSpanPreTrainingOutput(
+            return SpanPreTrainingOutput(
                 loss=final_masked_lm_loss,
                 prediction_logits=prediction_scores,
                 span_prediction_logits=span_prediction_scores,

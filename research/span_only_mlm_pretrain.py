@@ -46,4 +46,4 @@ training_args = PretrainingArguments(
 )
 training_pipeline = PretrainingPipeline(training_args, verbose=True)
 
-training_pipeline.tokenize().mask().generate_dataset().train().persist()
+training_pipeline.tokenize().static_mask().generate_dataset().train().persist()

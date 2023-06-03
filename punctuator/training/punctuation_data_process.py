@@ -1,5 +1,6 @@
 import logging
-from typing import List
+import re
+from typing import List, Union
 
 import numpy as np
 import torch
@@ -13,7 +14,9 @@ logger = logging.getLogger(__name__)
 SENTENCE_ENDINGS = ["PERIOD", "QUESTION"]
 
 
-def _read_data(source_data, min_sequence_length, max_sequence_length) -> List[List]:
+def _read_data(
+    source_data, target_sequence_length, is_return_list
+) -> Union[List[List], List[str]]:
     def read_line(text_line):
         return text_line.strip().split("\t")
 
@@ -39,20 +42,23 @@ def _read_data(source_data, min_sequence_length, max_sequence_length) -> List[Li
         processed_line = read_line(line)
         try:
             assert len(processed_line) == 2, "bad line"
-            token_doc.append(processed_line[0])
-            tag_doc.append(processed_line[1])
+            regex = re.compile("[^a-zA-Z0-9-+']")
+            token = regex.sub("", processed_line[0])
+            if token:
+                token_doc.append(token)
+                tag_doc.append(processed_line[1])
         except AssertionError:
             logger.warning(f"ignore the bad line: {line}, index: {index}")
             continue
         line_index += 1
-        if (
-            len(token_doc) >= min_sequence_length
-            and processed_line[1] in SENTENCE_ENDINGS
-        ) or len(token_doc) >= max_sequence_length:
+        if len(token_doc) >= target_sequence_length:
             try:
-                _verify_senquence(token_doc, min_sequence_length, max_sequence_length)
-                _verify_senquence(token_doc, min_sequence_length, max_sequence_length)
-                token_docs.append(token_doc)
+                _verify_senquence(token_doc, target_sequence_length)
+                _verify_senquence(tag_doc, target_sequence_length)
+                if is_return_list:
+                    token_docs.append(token_doc)
+                else:
+                    token_docs.append("".join(token_doc))
                 tag_docs.append(tag_doc)
                 token_doc = []
                 tag_doc = []
@@ -63,11 +69,11 @@ def _read_data(source_data, min_sequence_length, max_sequence_length) -> List[Li
                 continue
             pbar.update(len(token_doc))
     try:
-        _verify_senquence(token_doc, 0, max_sequence_length)
-        _verify_senquence(token_doc, 0, max_sequence_length)
-        token_docs.append(token_doc)
-        tag_docs.append(tag_doc)
-        token_docs.append(token_doc)
+        assert (len(token_doc)==len(tag_doc)), "Not equal length"
+        if is_return_list:
+            token_docs.append(token_doc)
+        else:
+            token_docs.append("".join(token_doc))
         tag_docs.append(tag_doc)
         pbar.update(len(token_doc))
     except AssertionError:
@@ -78,9 +84,9 @@ def _read_data(source_data, min_sequence_length, max_sequence_length) -> List[Li
     return token_docs, tag_docs
 
 
-def _verify_senquence(sequence, min_sequence_length, max_sequence_length):
+def _verify_senquence(sequence, target_sequence_length):
     assert (
-        min_sequence_length <= len(sequence) and len(sequence) <= max_sequence_length
+        target_sequence_length <= len(sequence)
     ), "wrong sequence length"
 
 
@@ -104,26 +110,27 @@ def unison_shuffled_copies(a, b):
     return a[p].tolist(), b[p].tolist()
 
 
-def process_data(source_data, min_sequence_length, max_sequence_length):
+def process_data(
+    source_data, target_sequence_length, is_return_list=True
+):
     """
     Function for generation of tokenized corpus and relevant tags
 
     Args:
         source_data(str or List): path of input data or input data
-        min_sequence_length(int): min sequence length of one sample
-        max_sequence_length(int): max sequence length of one sample
+        target_sequence_length(int): target sequence length of one sample
     """
     logger.info("load data")
     texts, tags = _read_data(
         source_data,
-        min_sequence_length,
-        max_sequence_length,
+        target_sequence_length,
+        is_return_list=is_return_list,
     )
     return texts, tags
 
 
 def generate_training_data_splitting(
-    source_data, min_sequence_length, max_sequence_length, split_rate=None
+    source_data, target_sequence_length, split_rate=None
 ):
     """
     Function for generation of training assets (with splitting) including
@@ -134,15 +141,13 @@ def generate_training_data_splitting(
 
     Args:
         source_data(str or List): path of input data or input data
-        min_sequence_length(int): min sequence length of one sample
-        max_sequence_length(int): max sequence length of one sample
+        target_sequence_length(int): target sequence length of one sample
         split_rate(float): train and validation split rate
     """
     logger.info("load training data")
     texts, tags = _read_data(
         source_data,
-        min_sequence_length,
-        max_sequence_length,
+        target_sequence_length,
     )
 
     logger.info(f"data sample: {texts[0]}")

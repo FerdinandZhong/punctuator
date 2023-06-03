@@ -1,6 +1,7 @@
 import logging
 import random
-from typing import List
+import re
+from typing import List, Union
 
 import torch
 from torch.utils.data import Dataset
@@ -14,7 +15,9 @@ SENTENCE_ENDINGS = ["PERIOD", "QUESTION"]
 logger = logging.getLogger(__name__)
 
 
-def _read_data(source_data, min_target_length, max_target_length) -> List[List]:
+def _read_data(
+    source_data, target_length, is_return_list
+) -> Union[List[List], List[str]]:
     def read_line(text_line):
         return text_line.strip().split("\t")
 
@@ -32,7 +35,11 @@ def _read_data(source_data, min_target_length, max_target_length) -> List[List]:
         processed_line = read_line(line)
         try:
             assert len(processed_line) == 2, "bad line"
-            token_doc.append(processed_line[0])
+            # TODO!: remove the non-english characters (except "'")
+            regex = re.compile("[^a-zA-Z0-9-+']")
+            token = regex.sub("", processed_line[0])
+            if token:
+                token_doc.append(token)
             if processed_line[1] == NORMAL_TOKEN_TAG:
                 token_doc.append(SPACE_TOKEN)
                 span_label_doc.append(0)
@@ -42,16 +49,19 @@ def _read_data(source_data, min_target_length, max_target_length) -> List[List]:
         except AssertionError:
             logger.warning(f"ignore the bad line: {line}, index: {index}")
             continue
-        if (
-            len(token_doc) >= min_target_length
-            and processed_line[1] in SENTENCE_ENDINGS
-        ) or len(token_doc) >= max_target_length:
-            token_docs.append(token_doc)
+        if len(token_doc) >= target_length:
+            if is_return_list:
+                token_docs.append(token_doc)
+            else:
+                token_docs.append("".join(token_doc))
             span_label_docs.append(span_label_doc)
             pbar.update(len(token_doc))
             token_doc = []
             span_label_doc = []
-    token_docs.append(token_doc)
+    if is_return_list:
+        token_docs.append(token_doc)
+    else:
+        token_docs.append("".join(token_doc))
     span_label_docs.append(span_label_doc)
     pbar.update(len(token_doc))
 
@@ -60,7 +70,10 @@ def _read_data(source_data, min_target_length, max_target_length) -> List[List]:
     return token_docs, span_label_docs
 
 
-def process_data(source_data, min_target_length, max_target_length):
+# TODO: update docstring
+def process_data(
+    source_data, target_length, is_return_list=True
+):
     """
     Function for generation of tokenized corpus and relevant tags
 
@@ -69,7 +82,9 @@ def process_data(source_data, min_target_length, max_target_length):
         target_sequence_length(int): target sequence length
     """
     logger.info("load data")
-    texts, span_labels = _read_data(source_data, min_target_length, max_target_length)
+    texts, span_labels = _read_data(
+        source_data, target_length, is_return_list=is_return_list
+    )
     return texts, span_labels
 
 
@@ -97,7 +112,38 @@ class MaskedEncodingDataset(Dataset):
         item["span_labels"] = torch.tensor(self.span_labels[idx]).type(torch.LongTensor)
 
         if self.labels is not None:
-            item["labels"] = self.labels[idx] if torch.is_tensor(self.labels[idx]) else torch.tensor(self.labels[idx]).type(torch.LongTensor)
+            item["labels"] = (
+                self.labels[idx]
+                if torch.is_tensor(self.labels[idx])
+                else torch.tensor(self.labels[idx]).type(torch.LongTensor)
+            )
+        return item
+
+    def __len__(self):
+        return len(self.span_labels)
+
+
+class EncodingDataset(Dataset):
+    def __init__(self, encodings, span_labels, labels=None):
+        self.encodings = encodings
+        self.span_labels = span_labels
+        self.labels = labels
+
+    def __getitem__(self, idx):
+        rand = random.uniform(0, 1)
+        # following the BERT's original pretraining method
+        item = {
+            key: val[idx] if torch.is_tensor(val[idx]) else torch.tensor(val[idx])
+            for key, val in self.encodings.items()
+        }
+        item["span_labels"] = torch.tensor(self.span_labels[idx]).type(torch.LongTensor)
+
+        if self.labels is not None:
+            item["labels"] = (
+                self.labels[idx]
+                if torch.is_tensor(self.labels[idx])
+                else torch.tensor(self.labels[idx]).type(torch.LongTensor)
+            )
         return item
 
     def __len__(self):

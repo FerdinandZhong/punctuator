@@ -42,6 +42,7 @@ class EvaluationArguments(BaseModel):
     use_gpu: Optional[bool] = True
     label2id: Optional[Dict]
     gpu_device: Optional[int] = environ.get("CUDA_VISIBLE_DEVICES", 0)
+    additional_tokenizer_config: Optional[Dict] = {}
 
 
 class EvaluationPipeline:
@@ -58,10 +59,11 @@ class EvaluationPipeline:
 
         model_collection = evaluation_arguments.model.value
         self.tokenizer = model_collection.tokenizer.from_pretrained(
-            self.arguments.tokenizer_name
+            self.arguments.tokenizer_name,
+            **evaluation_arguments.additional_tokenizer_config
         )
         self.model_config = model_collection.config.from_pretrained(
-            evaluation_arguments.model_weight_path,
+            os.path.join(evaluation_arguments.model_weight_path, "finetuned_model_config.json"),
             label2id=self.label2id,
             id2label=self.id2label,
             num_labels=len(self.id2label),

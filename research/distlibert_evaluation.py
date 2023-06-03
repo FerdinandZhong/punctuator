@@ -7,7 +7,7 @@ with open(test_data_file_path, "r", encoding="ISO-8859-1") as file:
 
 # must be exact same as model's config
 label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
-evalution_corpus, evaluation_tags = process_data(test_data, 256, 256)
+evalution_corpus, evaluation_tags = process_data(test_data, 128)
 evaluation_tags = [[label2id[tag] for tag in doc] for doc in evaluation_tags]
 evaluation_args = EvaluationArguments(
     evaluation_corpus=evalution_corpus,

@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -10,11 +10,16 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AdamW, get_constant_schedule_with_warmup
-from transformers import BertModel
+
 from punctuator.utils import Models
 
-from .model import BertForSpanMaskedLM
-from .punctuation_data_process import PUNCT_TOKEN, SPACE_TOKEN, MaskedEncodingDataset
+from .model import SpanMaskedLM
+from .punctuation_data_process import (
+    PUNCT_TOKEN,
+    SPACE_TOKEN,
+    EncodingDataset,
+    MaskedEncodingDataset,
+)
 
 logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 1
@@ -48,17 +53,18 @@ class PretrainingArguments(BaseModel):
         tensorboard_log_dir(Optional[str]): the tensorboard logs output directory, default is "runs"
 
         # model arguments
-        addtional_model_config(Optional[Dict]): additional configuration for model
+        additional_model_config(Optional[Dict]): additional configuration for model
     """
 
     # basic args
-    training_corpus: List[List[str]]
-    validation_corpus: List[List[str]]
+    training_corpus: Union[List[List[str]], List[str]]
+    validation_corpus: Union[List[List[str]], List[str]]
     training_span_labels: List[List[int]]
     validation_span_labels: List[List[int]]
     plm_model: Optional[Models] = Models.BERT
     plm_model_config_name: str
     tokenizer_name: str
+    current_plm_weights: Optional[str] = None
 
     # training ars
     epoch: int
@@ -71,11 +77,13 @@ class PretrainingArguments(BaseModel):
     plot_steps: int = 50
     tensorboard_log_dir: Optional[str] = "runs"
     intermediate_persist_step: int = 5
+    is_dynamic_mask: bool = False
 
     # model args
     span_only: bool = True
     mask_rate: float = 0.15
-    addtional_model_config: Optional[Dict]
+    additional_model_config: Optional[Dict] = {}
+    additional_tokenizer_config: Optional[Dict] = {}
     load_weight: bool = False
 
 
@@ -94,28 +102,41 @@ class PretrainingPipeline:
 
         self.plm_model_config = plm_model_collection.config.from_pretrained(
             training_arguments.plm_model_config_name,
-            **training_arguments.addtional_model_config,
+            **training_arguments.additional_model_config,
         )
         if verbose:
             logger.info(f"Full model config: {self.plm_model_config}")
 
         self.tokenizer = plm_model_collection.tokenizer.from_pretrained(
-            training_arguments.tokenizer_name
+            training_arguments.tokenizer_name,
+            **training_arguments.additional_tokenizer_config,
         )
 
         special_tokens_dict = {"additional_special_tokens": [SPACE_TOKEN, PUNCT_TOKEN]}
         self.tokenizer.add_special_tokens(special_tokens_dict)
         self.plm_model_config.vocab_size = len(self.tokenizer)
-        self.model = BertForSpanMaskedLM(
-            self.plm_model_config, span_only=training_arguments.span_only
+        lm_model = plm_model_collection.model(
+            self.plm_model_config, add_pooling_layer=False
+        )
+
+        lm_model.resize_token_embeddings(len(self.tokenizer))
+        self.model = SpanMaskedLM(
+            self.plm_model_config,
+            lm_model=lm_model,
+            span_only=training_arguments.span_only,
         )
         if training_arguments.load_weight:
-            pretrained_bert = BertModel.from_pretrained(training_arguments.plm_model_config_name, add_pooling_layer=False)
-            pretrained_bert.resize_token_embeddings(len(self.tokenizer))
-            self.model.bert.load_state_dict(pretrained_bert.state_dict())
-        else:
-            self.model.resize_token_embeddings(len(self.tokenizer))
-            
+            if training_arguments.current_plm_weights:
+                self.model.load_state_dict(
+                    torch.load(training_arguments.current_plm_weights)
+                )
+            else:
+                pretrained_bert = plm_model_collection.model.from_pretrained(
+                    training_arguments.plm_model_config_name, add_pooling_layer=False
+                )
+                pretrained_bert.resize_token_embeddings(len(self.tokenizer))
+                self.model.lm_model.load_state_dict(pretrained_bert.state_dict())
+
         self.span_token_id_start = self.tokenizer.additional_special_tokens_ids[0]
         self.span_token_ids = self.tokenizer.additional_special_tokens_ids
 
@@ -132,40 +153,42 @@ class PretrainingPipeline:
         else:
             self.device = torch.device("cpu")
             self.is_parallel = False
-        
+
         if verbose:
             logger.info(f"Full model architecture: {self.model}")
 
-    def tokenize(self):
+    def tokenize(self, is_split_into_words=True):
         logger.info("tokenize data")
 
-        self.train_encodings = self.tokenizer(
+        self.training_encodings = self.tokenizer(
             self.arguments.training_corpus,
-            is_split_into_words=True,
+            is_split_into_words=is_split_into_words,
             padding=True,
             return_tensors="pt",
         )
         self.val_encodings = self.tokenizer(
             self.arguments.validation_corpus,
-            is_split_into_words=True,
+            is_split_into_words=is_split_into_words,
             padding=True,
             return_tensors="pt",
         )
 
-        self.train_span_labels = self._span_label_encoding(
-            self.train_encodings.input_ids, self.arguments.training_span_labels
+        self.training_span_labels = self._span_label_encoding(
+            self.training_encodings.input_ids, self.arguments.training_span_labels
         )
         self.val_span_labels = self._span_label_encoding(
             self.val_encodings.input_ids, self.arguments.validation_span_labels
         )
 
         if not self.arguments.span_only:
-            self.train_token_labels = self._token_label_encoding(
-                self.train_encodings.input_ids
+            self.training_token_labels = self._token_label_encoding(
+                self.training_encodings.input_ids
             )
             self.val_token_labels = self._token_label_encoding(
                 self.val_encodings.input_ids
             )
+        else:
+            self.training_token_labels, self.val_token_labels = None, None
 
         return self
 
@@ -176,13 +199,16 @@ class PretrainingPipeline:
             index = 0
             for input_ids, span_labels in zip(input_ids_all, span_labels_all):
                 try:
-                    span_enc_labels = np.ones(len(input_ids)) * -100
+                    span_enc_labels = np.ones(len(input_ids), dtype=int) * -100
 
                     span_enc_labels[
-                        sum(
-                            input_ids == span_token_id
-                            for span_token_id in self.span_token_ids
-                        ).bool()
+                        (
+                            sum(
+                                input_ids == span_token_id
+                                for span_token_id in self.span_token_ids
+                            )
+                            * (input_ids != self.tokenizer.pad_token_id)
+                        ).bool()  # for span label, must ignore the padding, as it is binary cross entropy  # noqa: E501
                     ] = span_labels
                     span_enc_labels_list.append(span_enc_labels.tolist())
                 except ValueError as e:
@@ -203,9 +229,7 @@ class PretrainingPipeline:
                         input_ids == span_token_id
                         for span_token_id in self.span_token_ids
                     ).bool()
-                    token_enc_labels = torch.where(
-                        span_enc_label, -100, input_ids
-                    )
+                    token_enc_labels = torch.where(span_enc_label, -100, input_ids)
                     token_enc_labels_list.append(token_enc_labels)
                 except ValueError as e:
                     logger.warning(f"error encoding span labels: {str(e)}")
@@ -214,55 +238,75 @@ class PretrainingPipeline:
                 index += 1
         return token_enc_labels_list
 
-    def mask(self):
+    def static_mask(self):
         if self.arguments.span_only:
+            logger.info(f"add mask to spans only")
             self.train_mask_input_ids = self._span_only_mask(
-                self.train_encodings.input_ids
+                self.training_encodings.input_ids
             )
             self.val_mask_input_ids = self._span_only_mask(self.val_encodings.input_ids)
         else:
-            self.train_mask_input_ids = self._all_mask(self.train_encodings.input_ids)
+            logger.info(f"add mask to all")
+            self.train_mask_input_ids = self._all_mask(
+                self.training_encodings.input_ids
+            )
             self.val_mask_input_ids = self._all_mask(self.val_encodings.input_ids)
         return self
 
+    def dynamic_mask(self, input_ids_batch):
+        if self.arguments.span_only:
+            masked_input_ids_batch = self._span_only_mask(input_ids_batch)
+        else:
+            masked_input_ids_batch = self._all_mask(input_ids_batch)
+        return masked_input_ids_batch
+
     def _span_only_mask(self, input_ids_all):
-        logger.info(f"add mask to spans only")
         masked_input_ids_all = input_ids_all.detach().clone()
-        with tqdm(total=input_ids_all.shape[0]) as pbar:
+        with tqdm(
+            total=input_ids_all.shape[0], disable=self.arguments.is_dynamic_mask
+        ) as pbar:
             index = 0
             for input_ids in input_ids_all:
                 span_enc_label = sum(
-                    input_ids == span_token_id
-                    for span_token_id in self.span_token_ids
+                    input_ids == span_token_id for span_token_id in self.span_token_ids
                 ).bool()
                 span_input_ids_index = span_enc_label.nonzero().squeeze()
                 span_rand = torch.rand(span_input_ids_index.shape[0])
-                span_mask_arr = (span_rand < self.arguments.mask_rate)
-                span_selection_index = span_input_ids_index[torch.flatten((span_mask_arr).nonzero()).tolist()]
+                span_mask_arr = span_rand < self.arguments.mask_rate
+                span_selection_index = span_input_ids_index[
+                    torch.flatten((span_mask_arr).nonzero()).tolist()
+                ]
 
-                masked_input_ids_all[index, span_selection_index] = 103
+                masked_input_ids_all[
+                    index, span_selection_index
+                ] = self.tokenizer.mask_token_id
                 index += 1
                 pbar.update(1)
         return masked_input_ids_all
 
     def _all_mask(self, input_ids_all):
-        logger.info(f"add mask to all")
         masked_input_ids_all = input_ids_all.detach().clone()
         rand = torch.rand(input_ids_all.shape)
-        with tqdm(total=input_ids_all.shape[0]) as pbar:
+        with tqdm(
+            total=input_ids_all.shape[0], disable=self.arguments.is_dynamic_mask
+        ) as pbar:
             index = 0
             for input_ids in input_ids_all:
                 valuable_input_ids = (
-                    (input_ids != self.tokenizer.cls_token_id) *
-                    (input_ids != self.tokenizer.sep_token_id) *
-                    (input_ids != self.tokenizer.pad_token_id)
+                    (input_ids != self.tokenizer.cls_token_id)
+                    * (input_ids != self.tokenizer.sep_token_id)
+                    * (input_ids != self.tokenizer.pad_token_id)
                 ).bool()
                 all_valuable_input_ids_index = valuable_input_ids.nonzero().squeeze()
                 rand = torch.rand(all_valuable_input_ids_index.shape[0])
-                mask_arr = (rand < self.arguments.mask_rate * 2)
-                selection_index = all_valuable_input_ids_index[torch.flatten((mask_arr).nonzero()).tolist()]
-                
-                masked_input_ids_all[index, selection_index] = 103
+                mask_arr = rand < self.arguments.mask_rate * 2
+                selection_index = all_valuable_input_ids_index[
+                    torch.flatten((mask_arr).nonzero()).tolist()
+                ]
+
+                masked_input_ids_all[
+                    index, selection_index
+                ] = self.tokenizer.mask_token_id
                 index += 1
                 pbar.update(1)
         return masked_input_ids_all
@@ -270,19 +314,21 @@ class PretrainingPipeline:
     def generate_dataset(self):
         logger.info("generate dataset from tokenized data")
 
-        if self.arguments.span_only:
-            self.training_dataset = MaskedEncodingDataset(
-                self.train_mask_input_ids, self.train_encodings, self.train_span_labels
+        if self.arguments.is_dynamic_mask:
+            self.training_dataset = EncodingDataset(
+                self.training_encodings,
+                self.training_span_labels,
+                self.training_token_labels,
             )
-            self.val_dataset = MaskedEncodingDataset(
-                self.val_mask_input_ids, self.val_encodings, self.val_span_labels
+            self.val_dataset = EncodingDataset(
+                self.val_encodings, self.val_span_labels, self.val_token_labels
             )
         else:
             self.training_dataset = MaskedEncodingDataset(
                 self.train_mask_input_ids,
-                self.train_encodings,
-                self.train_span_labels,
-                self.train_token_labels,
+                self.training_encodings,
+                self.training_span_labels,
+                self.training_token_labels,
             )
             self.val_dataset = MaskedEncodingDataset(
                 self.val_mask_input_ids,
@@ -295,7 +341,6 @@ class PretrainingPipeline:
 
     def _epoch_train(self, iterator, optim, scheduler=None, is_val=False):
         epoch_loss = 0
-        epoch_acc = 0
         epoch_span_acc = 0
         epoch_token_acc = 0
         if is_val:
@@ -311,7 +356,10 @@ class PretrainingPipeline:
                 pbar.set_description(f"Processing batch: {in_epoch_steps}")
 
                 optim.zero_grad()
-                input_ids = batch["input_ids"].to(self.device)
+                if self.arguments.is_dynamic_mask:
+                    input_ids = self.dynamic_mask(batch["input_ids"]).to(self.device)
+                else:
+                    input_ids = batch["input_ids"].to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
                 span_labels = batch["span_labels"].to(self.device)
 
@@ -355,9 +403,13 @@ class PretrainingPipeline:
                 epoch_loss += loss.item()
 
                 if self.arguments.span_only:
-                    epoch_span_acc += self._accuracy(span_prediction_logits, span_labels)
+                    epoch_span_acc += self._accuracy(
+                        span_prediction_logits, span_labels
+                    )
                 else:
-                    epoch_span_acc += self._accuracy(span_prediction_logits, span_labels)
+                    epoch_span_acc += self._accuracy(
+                        span_prediction_logits, span_labels
+                    )
                     epoch_token_acc += self._accuracy(prediction_logits, labels)
 
                 pbar.update(1)
@@ -371,7 +423,9 @@ class PretrainingPipeline:
         return {
             "epoch_loss": epoch_loss / in_epoch_steps,
             "epoch_span_acc": epoch_span_acc / in_epoch_steps,
-            "epoch_token_acc": 0 if self.arguments.span_only else epoch_token_acc/ in_epoch_steps
+            "epoch_token_acc": 0
+            if self.arguments.span_only
+            else epoch_token_acc / in_epoch_steps,
         }
 
     def _epoch_time(self, start_time, end_time):
@@ -403,10 +457,10 @@ class PretrainingPipeline:
         logger.info("start training")
 
         train_loader = DataLoader(
-            self.training_dataset, batch_size=self.arguments.batch_size, shuffle=False
+            self.training_dataset, batch_size=self.arguments.batch_size, shuffle=True
         )
         val_loader = DataLoader(
-            self.val_dataset, batch_size=self.arguments.batch_size, shuffle=False
+            self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True
         )
         optim = AdamW(self.model.parameters(), lr=1e-5)
 
@@ -415,7 +469,7 @@ class PretrainingPipeline:
             num_warmup_steps=self.arguments.warm_up_steps,
         )
 
-        best_valid_loss = 100
+        best_valid_loss = float('inf')
         no_improvement_count = 0
         self.total_steps = 0
 
@@ -425,9 +479,7 @@ class PretrainingPipeline:
 
                 start_time = time.time()
 
-                train_epoch_outputs = self._epoch_train(
-                    train_loader, optim, scheduler
-                )
+                train_epoch_outputs = self._epoch_train(train_loader, optim, scheduler)
                 val_epoch_outputs = self._epoch_train(
                     val_loader, optim, scheduler, True
                 )
@@ -440,18 +492,26 @@ class PretrainingPipeline:
                 )
 
                 self.tensorboard_writter.add_scalar(
-                    "Epoch span acc/train", train_epoch_outputs["epoch_span_acc"], epoch + 1
+                    "Epoch span acc/train",
+                    train_epoch_outputs["epoch_span_acc"],
+                    epoch + 1,
                 )
                 self.tensorboard_writter.add_scalar(
-                    "Epoch span acc/valid", val_epoch_outputs["epoch_span_acc"], epoch + 1
+                    "Epoch span acc/valid",
+                    val_epoch_outputs["epoch_span_acc"],
+                    epoch + 1,
                 )
 
                 if not self.arguments.span_only:
                     self.tensorboard_writter.add_scalar(
-                        "Epoch token acc/train", train_epoch_outputs["epoch_token_acc"], epoch + 1
+                        "Epoch token acc/train",
+                        train_epoch_outputs["epoch_token_acc"],
+                        epoch + 1,
                     )
                     self.tensorboard_writter.add_scalar(
-                        "Epoch token acc/valid", val_epoch_outputs["epoch_token_acc"], epoch + 1
+                        "Epoch token acc/valid",
+                        val_epoch_outputs["epoch_token_acc"],
+                        epoch + 1,
                     )
 
                 end_time = time.time()
@@ -461,12 +521,8 @@ class PretrainingPipeline:
                 logger.info(
                     f"Epoch: {epoch + 1:02} | Epoch Time: {epoch_mins}m {epoch_secs}s"
                 )
-                logger.info(
-                    f"Train Loss: {train_epoch_outputs['epoch_loss']:.3f}"
-                )
-                logger.info(
-                    f"Val. Loss: { val_epoch_outputs['epoch_loss']:.3f}"
-                )
+                logger.info(f"Train Loss: {train_epoch_outputs['epoch_loss']:.3f}")
+                logger.info(f"Val. Loss: { val_epoch_outputs['epoch_loss']:.3f}")
                 logger.info(
                     f"Train Span Acc: {train_epoch_outputs['epoch_span_acc'] * 100:.2f}%"
                 )
@@ -480,7 +536,7 @@ class PretrainingPipeline:
                     logger.info(
                         f"Val. Token Acc: {val_epoch_outputs['epoch_token_acc'] * 100:.2f}%"
                     )
-                
+
                 pbar.update(1)
 
                 if (epoch + 1) % self.arguments.intermediate_persist_step == 0:
@@ -490,7 +546,7 @@ class PretrainingPipeline:
                     self._intermediate_persist(epoch + 1)
 
                 if val_epoch_outputs["epoch_loss"] < best_valid_loss:
-                    best_valid_loss =  val_epoch_outputs["epoch_loss"]
+                    best_valid_loss = val_epoch_outputs["epoch_loss"]
                     if self.is_parallel:
                         self.best_state_dict = self.model.module.state_dict()
                     else:
@@ -525,9 +581,9 @@ class PretrainingPipeline:
             ),
         )
         torch.save(
-            persist_moodel.bert.state_dict(),
+            persist_moodel.lm_model.state_dict(),
             os.path.join(
-                self.arguments.model_storage_dir, f"epoch_{epoch_index}_bert_only.bin"
+                self.arguments.model_storage_dir, f"epoch_{epoch_index}_lm_only.bin"
             ),
         )
 
@@ -539,7 +595,11 @@ class PretrainingPipeline:
         # self.classifier.load_state_dict(self.best_state_dict)
         # self.classifier.save_pretrained(self.arguments.model_storage_dir)
 
-        self.plm_model_config.save_pretrained(self.arguments.model_storage_dir)
+        output_config_file = (
+            f"{self.arguments.model_storage_dir}/pretrained_model_config.json"
+        )
+        self.plm_model_config.to_json_file(output_config_file, use_diff=True)
+
         torch.save(
             self.best_state_dict,
             os.path.join(self.arguments.model_storage_dir, "whole_model.bin"),
@@ -548,14 +608,14 @@ class PretrainingPipeline:
         if self.is_parallel:
             self.model.module.load_state_dict(self.best_state_dict)
             torch.save(
-                self.model.module.bert.state_dict(),
-                os.path.join(self.arguments.model_storage_dir, "bert_only.bin"),
+                self.model.module.lm_model.state_dict(),
+                os.path.join(self.arguments.model_storage_dir, "lm_only.bin"),
             )
         else:
             self.model.load_state_dict(self.best_state_dict)
             torch.save(
-                self.model.bert.state_dict(),
-                os.path.join(self.arguments.model_storage_dir, "bert_only.bin"),
+                self.model.lm_model.state_dict(),
+                os.path.join(self.arguments.model_storage_dir, "lm_only.bin"),
             )
 
         logger.info(f"model stored to {self.arguments.model_storage_dir}")

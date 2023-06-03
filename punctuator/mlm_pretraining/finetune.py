@@ -7,16 +7,15 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from pydantic import BaseModel
-from sklearn.utils import class_weight
 from sklearn.metrics import classification_report
-
+from sklearn.utils import class_weight
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AdamW, get_constant_schedule_with_warmup
 
 from punctuator.training.punctuation_data_process import EncodingDataset
-from punctuator.utils import Models, NORMAL_TOKEN_TAG
+from punctuator.utils import NORMAL_TOKEN_TAG, Models
 
 logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 1
@@ -32,7 +31,7 @@ class FineTuneArguments(BaseModel):
         training_tags(List[List[int]]): tags(int) for training
         validation_tags(List[List[int]]): tags(int) for validation
         model(Optional(enum)): model selected from Enum Models, default is "DISTILBERT"
-        model_weight_name(str): name or path of pre-trained model weight
+        model_config_name(str): name or path of pre-trained model weight
         tokenizer_name(str): name of pretrained tokenizer
 
         # training arguments
@@ -60,6 +59,7 @@ class FineTuneArguments(BaseModel):
     validation_tags: List[List[int]]
     plm_path: str
     tokenizer_name: str
+    model_config_name: str
     model: Optional[Models] = Models.BERT_TOKEN_CLASSIFICATION
 
     # training ars
@@ -78,7 +78,8 @@ class FineTuneArguments(BaseModel):
     intermediate_persist_step: int = 5
 
     # model args
-    addtional_model_config: Optional[Dict]
+    addtional_model_config: Optional[Dict] = {}
+    additional_tokenizer_config: Optional[Dict] = {}
 
 
 class FinetunePipeline:
@@ -97,7 +98,7 @@ class FinetunePipeline:
         model_collection = training_arguments.model.value
 
         self.finetuned_model_config = model_collection.config.from_pretrained(
-            training_arguments.plm_path,
+            os.path.join(training_arguments.plm_path, "pretrained_model_config.json"),
             label2id=self.label2id,
             id2label=self.id2label,
             num_labels=len(self.id2label),
@@ -107,11 +108,14 @@ class FinetunePipeline:
             logger.info(f"Full model config: {self.finetuned_model_config}")
 
         self.tokenizer = model_collection.tokenizer.from_pretrained(
-            training_arguments.tokenizer_name
+            training_arguments.tokenizer_name,
+            **training_arguments.additional_tokenizer_config,
         )
         self.finetuned_model = model_collection.model(self.finetuned_model_config)
-        plm_weights_path = os.path.join(training_arguments.plm_path, "epoch_25_bert_only.bin")
-        self.finetuned_model.bert.load_state_dict(torch.load(plm_weights_path))
+        plm_weights_path = os.path.join(training_arguments.plm_path, "lm_only.bin")
+        self.finetuned_model.bert.load_state_dict(
+            torch.load(plm_weights_path)
+        )  # TODO: find a better way to set lm model weight
         # plm_weights_path = os.path.join(self.arguments.plm_path, "finetuned_model.bin")
         # self.finetuned_model.load_state_dict(torch.load(plm_weights_path))
 
@@ -130,18 +134,18 @@ class FinetunePipeline:
             self.device = torch.device("cpu")
             self.is_parallel = False
 
-    def tokenize(self):
+    def tokenize(self, is_split_into_words=True):
         logger.info("tokenize data")
 
         self.train_encodings = self.tokenizer(
             self.arguments.training_corpus,
-            is_split_into_words=True,
+            is_split_into_words=is_split_into_words,
             return_offsets_mapping=True,
             padding=True,
         )
         self.val_encodings = self.tokenizer(
             self.arguments.validation_corpus,
-            is_split_into_words=True,
+            is_split_into_words=is_split_into_words,
             return_offsets_mapping=True,
             padding=True,
         )
@@ -171,10 +175,14 @@ class FinetunePipeline:
         self.class_weights = torch.tensor(weights, dtype=torch.float)
 
         self.train_encoded_tags = self._encode_tags(
-            self.arguments.training_tags, self.train_encodings
+            self.arguments.training_tags,
+            self.train_encodings,
+            self.arguments.training_corpus,
         )
         self.validation_encoded_tags = self._encode_tags(
-            self.arguments.validation_tags, self.val_encodings
+            self.arguments.validation_tags,
+            self.val_encodings,
+            self.arguments.validation_corpus,
         )
 
         return self
@@ -208,7 +216,7 @@ class FinetunePipeline:
             num_warmup_steps=self.arguments.warm_up_steps,
         )
 
-        best_valid_loss = 100
+        best_valid_loss = float('inf')
         no_improvement_count = 0
         self.total_steps = 0
 
@@ -260,7 +268,9 @@ class FinetunePipeline:
 
                 if val_loss < best_valid_loss:
                     best_valid_loss = val_loss
-                    logger.info(f"New best valid loss found: {best_valid_loss} in epoch {epoch + 1}")
+                    logger.info(
+                        f"New best valid loss found: {best_valid_loss} in epoch {epoch + 1}"
+                    )
                     if self.is_parallel:
                         self.best_state_dict = self.finetuned_model.module.state_dict()
                     else:
@@ -304,7 +314,11 @@ class FinetunePipeline:
         # self.classifier.load_state_dict(self.best_state_dict)
         # self.classifier.save_pretrained(self.arguments.model_storage_dir)
 
-        self.finetuned_model_config.save_pretrained(self.arguments.model_storage_dir)
+        output_config_file = (
+            f"{self.arguments.model_storage_dir}/finetuned_model_config.json"
+        )
+        self.finetuned_model_config.to_json_file(output_config_file, use_diff=True)
+
         torch.save(
             self.best_state_dict,
             os.path.join(self.arguments.model_storage_dir, "finetuned_model.bin"),
@@ -312,11 +326,13 @@ class FinetunePipeline:
 
         logger.info(f"fine-tuned model stored to {self.arguments.model_storage_dir}")
 
-    def _encode_tags(self, tags, encodings):
+    def _encode_tags(self, tags, encodings, corpus):
         logger.info("encoding tags")
         encoded_labels = []
         with tqdm(total=len(tags)) as pbar:
-            for doc_labels, doc_offset in zip(tags, encodings.offset_mapping):
+            for doc_labels, doc_offset, sample in zip(
+                tags, encodings.offset_mapping, corpus
+            ):
                 try:
                     # create an empty array of -100
                     doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
@@ -329,6 +345,7 @@ class FinetunePipeline:
                     encoded_labels.append(doc_enc_labels.tolist())
                 except ValueError as e:
                     logger.warning(f"error encoding: {str(e)}")
+                    logger.warning(f"sample: {sample}")
                     logger.warning(f"tags: {doc_labels}")
                 pbar.update(1)
 
@@ -477,7 +494,7 @@ class FinetunePipeline:
                     zero_division=1,
                 )
                 logger.info(f"validation report: \n {report}")
-                
+
         return epoch_loss / in_epoch_steps, epoch_acc / in_epoch_steps
 
     def _epoch_time(self, start_time, end_time):

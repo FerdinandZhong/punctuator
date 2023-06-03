@@ -35,6 +35,7 @@ training_args = FineTuneArguments(
     plm_path="models/pretraining_mlm/span_only/bert_large_uncased",
     model_storage_dir="models/pretraining_mlm/span_only/bert_large_uncased",
     tokenizer_name="bert-large-uncased",
+    model_weight_name="bert-large-uncased",
     label2id=label2id,
     epoch=40,
     batch_size=32,

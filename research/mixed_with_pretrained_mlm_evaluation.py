@@ -1,6 +1,11 @@
 from punctuator.mlm_pretraining import EvaluationArguments, EvaluationPipeline
 from punctuator.training import process_data
 from punctuator.utils import Models
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--last_layer", help="last layer of the output directory", default="")
+args = parser.parse_args()
 
 test_data_file_path = "data/IWSLT/formatted/test2011"
 
@@ -9,19 +14,18 @@ with open(test_data_file_path, "r") as file:
 
 # must be exact same as model's config
 label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
-evalution_corpus, evaluation_tags = process_data(test_data, 128, 256)
+evalution_corpus, evaluation_tags = process_data(test_data, 128)
 evaluation_tags = [[label2id[tag] for tag in doc] for doc in evaluation_tags]
 evaluation_args = EvaluationArguments(
     evaluation_corpus=evalution_corpus,
     evaluation_tags=evaluation_tags,
     model=Models.BERT_TOKEN_CLASSIFICATION,
-    model_weight_path="models/pretraining_mlm/mixed_with_pretrained/bert_large_uncased",
-    model_weight_name="epoch_10_finetuned_model.bin",
+    model_weight_path=f"models/pretraining_mlm/mixed_with_pretrained/bert_large_uncased/{args.last_layer}",
+    model_weight_name="finetuned_model.bin",
     tokenizer_name="bert-large-uncased",
-    batch_size=32,
+    batch_size=64,
     gpu_device=0,
     label2id=label2id,
-    
 )
 
 evaluation_pipeline = EvaluationPipeline(evaluation_args)
