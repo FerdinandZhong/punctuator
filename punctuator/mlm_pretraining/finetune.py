@@ -216,7 +216,7 @@ class FinetunePipeline:
             num_warmup_steps=self.arguments.warm_up_steps,
         )
 
-        best_valid_loss = float('inf')
+        best_valid_loss = float("inf")
         no_improvement_count = 0
         self.total_steps = 0
 

@@ -13,60 +13,30 @@ from transformers import AdamW, get_constant_schedule_with_warmup
 
 from punctuator.utils import Models
 
-from .model import SpanMaskedLM
-from .punctuation_data_process import (
-    PUNCT_TOKEN,
-    SPACE_TOKEN,
-    EncodingDataset,
-    MaskedEncodingDataset,
-)
+from .model import PointerPunctuator
 
 logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 1
 
 
-class PretrainingArguments(BaseModel):
-    """Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
+class TrainingArguments(BaseModel):
+    """_summary_
 
     Args:
-        # basic arguments
-        training_corpus(List[List[str]]): list of sequences for training, longest sequence should be no longer than pretrained LM # noqa: E501
-        validation_corpus(List[List[str]]): list of sequences for validation, longest sequence should be no longer than pretrained LM # noqa: E501
-        training_tags(List[List[int]]): tags(int) for training
-        validation_tags(List[List[int]]): tags(int) for validation
-        plm_model(Optional(enum)): model selected from Enum Models, default is "DISTILBERT"
-        plm_model_weight_name(str): name or path of pre-trained model weight
-        tokenizer_name(str): name of pretrained tokenizer
-
-        # training arguments
-        epoch(int): number of epoch
-        batch_size(int): batch size
-        model_storage_dir(str): fine-tuned model storage path
-        label2id(Dict): the tags label and id mapping
-        early_stop_count(int): after how many epochs to early stop training if valid loss not become smaller. default 3 # noqa: E501
-        use_gpu(Optional[bool]): whether to use gpu for training, default is "True"
-        gpu_device(Optional[int]): specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
-        warm_up_steps(int): warm up steps.
-        r_drop(bool): whether to train with r-drop
-        r_alpha(int): alpha value for kl divengence in the loss, default is 0
-        plot_steps(int): record training status to tensorboard among how many steps
-        tensorboard_log_dir(Optional[str]): the tensorboard logs output directory, default is "runs"
-
-        # model arguments
-        additional_model_config(Optional[Dict]): additional configuration for model
+        BaseModel (_type_): _description_
     """
 
     # basic args
     training_corpus: Union[List[List[str]], List[str]]
     validation_corpus: Union[List[List[str]], List[str]]
-    training_span_labels: List[List[int]]
-    validation_span_labels: List[List[int]]
-    plm_model: Optional[Models] = Models.BERT
-    plm_model_config_name: str
+    model: Optional[Models] = Models.BART
+    load_local_model: bool = False
+    model_config_name: str
     tokenizer_name: str
-    current_plm_weights: Optional[str] = None
+    model_name: str
 
     # training ars
+    label2id: Dict
     epoch: int
     batch_size: int
     model_storage_dir: str
@@ -77,17 +47,21 @@ class PretrainingArguments(BaseModel):
     plot_steps: int = 50
     tensorboard_log_dir: Optional[str] = "runs"
     intermediate_persist_step: int = 5
-    is_dynamic_mask: bool = False
 
     # model args
-    span_only: bool = True
-    mask_rate: float = 0.15
     additional_model_config: Optional[Dict] = {}
     additional_tokenizer_config: Optional[Dict] = {}
     load_weight: bool = False
 
 
-class PretrainingPipeline:
+class TrainingPipeline:
+    """Two steps model:
+
+    * punctuation position detection based on pointer network.
+    * punctuation prediction at predicted positions.
+
+    """
+
     def __init__(self, training_arguments, verbose=False):
         """Training pipeline
 
@@ -98,47 +72,28 @@ class PretrainingPipeline:
 
         self.tensorboard_writter = SummaryWriter(training_arguments.tensorboard_log_dir)
 
-        plm_model_collection = training_arguments.plm_model.value
+        model_collection = training_arguments.model.value
 
-        self.plm_model_config = plm_model_collection.config.from_pretrained(
-            training_arguments.plm_model_config_name,
-            **training_arguments.additional_model_config,
-        )
+        if training_arguments.load_local_model:
+            self.model = PointerPunctuator.from_pretrained(
+                training_arguments.model_name
+            )
+        else:
+            pretrained_model = model_collection.model.from_pretrained(
+                training_arguments.model_name
+            )
+            config = model_collection.config.from_pretrained(
+                training_arguments.model_config_name,
+                **training_arguments.additional_model_config,
+            )
+            self.model = PointerPunctuator(config, pretrained_model)
         if verbose:
             logger.info(f"Full model config: {self.plm_model_config}")
 
-        self.tokenizer = plm_model_collection.tokenizer.from_pretrained(
+        self.tokenizer = model_collection.tokenizer.from_pretrained(
             training_arguments.tokenizer_name,
             **training_arguments.additional_tokenizer_config,
         )
-
-        special_tokens_dict = {"additional_special_tokens": [SPACE_TOKEN, PUNCT_TOKEN]}
-        self.tokenizer.add_special_tokens(special_tokens_dict)
-        self.plm_model_config.vocab_size = len(self.tokenizer)
-        lm_model = plm_model_collection.model(
-            self.plm_model_config, add_pooling_layer=False
-        )
-
-        lm_model.resize_token_embeddings(len(self.tokenizer))
-        self.model = SpanMaskedLM(
-            self.plm_model_config,
-            lm_model=lm_model,
-            span_only=training_arguments.span_only,
-        )
-        if training_arguments.load_weight:
-            if training_arguments.current_plm_weights:
-                self.model.load_state_dict(
-                    torch.load(training_arguments.current_plm_weights)
-                )
-            else:
-                pretrained_bert = plm_model_collection.model.from_pretrained(
-                    training_arguments.plm_model_config_name, add_pooling_layer=False
-                )
-                pretrained_bert.resize_token_embeddings(len(self.tokenizer))
-                self.model.lm_model.load_state_dict(pretrained_bert.state_dict())
-
-        self.span_token_id_start = self.tokenizer.additional_special_tokens_ids[0]
-        self.span_token_ids = self.tokenizer.additional_special_tokens_ids
 
         if torch.cuda.is_available() and training_arguments.use_gpu:
             if torch.cuda.device_count() > 1:
@@ -156,6 +111,13 @@ class PretrainingPipeline:
 
         if verbose:
             logger.info(f"Full model architecture: {self.model}")
+
+    # TODO: data processing: generate masks for each batch based on the offset_mapping to give the special tokens and tokens not having the end of the natural word "0" others "1"
+    # TODO: training
+    # 1. for position detection, loop over tokens step by step, find the nearest position (with probability over the threshold).
+    #   Loss is the negative log likelihood loss over the whole sequence (after finishing checking all tokens in the sequence.)
+    # 2. for punction prediction, feeding the tokens before the position into the decoder only for the prediction of the punctuation.
+    # 3. total loss is the combination of the above two.
 
     def tokenize(self, is_split_into_words=True):
         logger.info("tokenize data")

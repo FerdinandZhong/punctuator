@@ -56,7 +56,7 @@ class EvaluationPipeline:
         model_collection = evaluation_arguments.model.value
         self.tokenizer = model_collection.tokenizer.from_pretrained(
             self.arguments.tokenizer_name,
-            **evaluation_arguments.additional_tokenizer_config
+            **evaluation_arguments.additional_tokenizer_config,
         )
         self.classifier = model_collection.model.from_pretrained(
             evaluation_arguments.model_weight_name

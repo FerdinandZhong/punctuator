@@ -1,9 +1,12 @@
-from punctuator.training import NERTrainingArguments, NERTrainingPipeline, process_data
-from punctuator.utils import Models
 import argparse
 
+from punctuator.training import NERTrainingArguments, NERTrainingPipeline, process_data
+from punctuator.utils import Models
+
 parser = argparse.ArgumentParser()
-parser.add_argument("--last_layer", help="last layer of the output directory", default="")
+parser.add_argument(
+    "--last_layer", help="last layer of the output directory", default=""
+)
 args = parser.parse_args()
 
 training_data_file_path = "data/IWSLT/formatted/train2012"

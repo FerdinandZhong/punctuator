@@ -4,6 +4,9 @@ from enum import Enum
 from transformers import (
     AutoConfig,
     AutoModel,
+    BartConfig,
+    BartModel,
+    BartTokenizerFast,
     BertConfig,
     BertForTokenClassification,
     BertModel,
@@ -33,3 +36,4 @@ class Models(Enum):
     ROBERTA_TOKEN_CLASSIFICATION = ModelCollection(
         RobertaConfig, RobertaTokenizerFast, RobertaForTokenClassification
     )
+    BART = ModelCollection(BartConfig, BartTokenizerFast, BartModel)

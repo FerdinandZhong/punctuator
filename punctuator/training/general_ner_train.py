@@ -181,10 +181,14 @@ class NERTrainingPipeline:
         self.class_weights = torch.tensor(weights, dtype=torch.float)
 
         self.train_encoded_tags = self._encode_tags(
-            self.arguments.training_tags, self.train_encodings, self.arguments.training_corpus
+            self.arguments.training_tags,
+            self.train_encodings,
+            self.arguments.training_corpus,
         )
         self.validation_encoded_tags = self._encode_tags(
-            self.arguments.validation_tags, self.val_encodings, self.arguments.validation_corpus,
+            self.arguments.validation_tags,
+            self.val_encodings,
+            self.arguments.validation_corpus,
         )
 
         return self
