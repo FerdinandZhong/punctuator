@@ -12,6 +12,8 @@ from punctuator.utils import NORMAL_TOKEN_TAG
 
 logger = logging.getLogger(__name__)
 
+def read_line(text_line):
+    return text_line.strip().split("\t")
 
 def generate_stage1_data(
     source_data,
@@ -48,14 +50,66 @@ def generate_stage1_data(
 
     return all_tokens, all_tags
 
+def generate_batched_stage1_data(
+    source_data, target_sequence_length, normal_token_tag: str = NORMAL_TOKEN_TAG,
+):
+    all_tokens = []
+    all_tags = []
+    line_index = 0
+
+    token_doc = []
+    tag_doc = []
+    if isinstance(source_data, List):
+        pbar = tqdm(source_data)
+    else:
+        with open(source_data, "r") as data_file:
+            pbar = tqdm(data_file.readlines())
+    for index, line in enumerate(pbar):
+        processed_line = read_line(line)
+        try:
+            assert len(processed_line) == 2, "bad line"
+            regex = re.compile("[^a-zA-Z0-9-+']")
+            token = regex.sub("", processed_line[0])
+            if token:
+                token_doc.append(token)
+                if processed_line[1] == normal_token_tag:
+                    tag_doc.append(0)
+                else:
+                    tag_doc.append(1)
+        except AssertionError:
+            logger.warning(f"ignore the bad line: {line}, index: {index}")
+            continue
+        line_index += 1
+        if len(token_doc) >= target_sequence_length:
+            try:
+                _verify_senquence(token_doc, target_sequence_length)
+                _verify_senquence(tag_doc, target_sequence_length)
+                all_tokens.append(token_doc)
+                all_tags.append(tag_doc)
+            except AssertionError:
+                logger.warning(f"error generating sequence: {token_doc}")
+                token_doc = []
+                tag_doc = []
+                continue
+            pbar.update(len(token_doc))
+    try:
+        assert len(token_doc) == len(tag_doc), "Not equal length"
+        all_tokens.append(token_doc)
+        all_tags.append(tag_doc)
+        pbar.update(len(token_doc))
+    except AssertionError:
+        logger.warning(f"error generating sequence: {token_doc}")
+
+    pbar.close()
+
+    return all_tokens, all_tags
+
+
 
 # TODO stage2 data processing
 def _read_data(
     source_data, target_sequence_length, is_return_list
 ) -> Union[List[List], List[str]]:
-    def read_line(text_line):
-        return text_line.strip().split("\t")
-
     token_docs = []
     tag_docs = []
     line_index = 0

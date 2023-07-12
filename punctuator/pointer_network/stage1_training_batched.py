@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -20,7 +20,23 @@ logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 1
 
 
-class Stage1TrainingArguments(BaseModel):
+class EncodingDataset:
+    def __init__(self, input_seqeunces, tags):
+        self.input_seqeunces = input_seqeunces
+        self.tags = tags
+
+    def __getitem__(self, idx):
+        item = {
+            "input_sequences": self.input_seqeunces[idx],
+            "tags": self.tags[idx]
+        }
+        return item
+
+    def __len__(self):
+        return len(self.labels)
+
+
+class Stage1TrainingBatchedArguments(BaseModel):
     """_summary_
 
     Args:
@@ -44,13 +60,12 @@ class Stage1TrainingArguments(BaseModel):
     max_input_length: int = 320
     min_input_length: int = 160
     pointer_threshold: float = 0.5
-    pointer_tolerance: int = 20
+    pointer_tolerance: int = 10
     backward_count: int = 1
     early_stop_count: Optional[int] = 3
     use_gpu: Optional[bool] = True
     gpu_device: Optional[int] = os.environ.get("CUDA_VISIBLE_DEVICES", 0)
     warm_up_steps: int = 1000
-    persist_steps: int = 1000
     plot_steps: int = 50
     tensorboard_log_dir: Optional[str] = "runs"
     intermediate_persist_step: int = 5
@@ -60,7 +75,7 @@ class Stage1TrainingArguments(BaseModel):
     additional_tokenizer_config: Optional[Dict] = {}
 
 
-class Stage1TrainingPipeline:
+class Stage1TrainingBatchedPipeline:
     """Two steps model:
 
     * punctuation position detection based on pointer network.
@@ -81,8 +96,14 @@ class Stage1TrainingPipeline:
         model_collection = training_arguments.pretrained_model.value
 
         if training_arguments.load_local_model:
-            self.model = PointerPunctuator.from_pretrained(
-                training_arguments.model_name
+            config = model_collection.config.from_pretrained(
+                os.path.join(training_arguments.model_config_name, "model_config.json"),
+                **training_arguments.additional_model_config,
+            )
+            logger.info(config)
+            self.model = PointerPunctuator(config)
+            self.model.load_state_dict(
+                torch.load(os.path.join(training_arguments.model_name, "whole_model.bin"))
             )
         else:
             pretrained_model = model_collection.model.from_pretrained(
@@ -115,8 +136,15 @@ class Stage1TrainingPipeline:
             self.device = torch.device("cpu")
             self.is_parallel = False
 
-        # if verbose:
-        #     logger.info(f"Full model architecture: {self.model}")
+        if verbose:
+            logger.info(f"Full model architecture: {self.model}")
+        
+        self.training_dataset = EncodingDataset(
+            self.arguments.training_corpus, self.arguments.training_tags
+        )
+        self.val_dataset = EncodingDataset(
+            self.arguments.validation_corpus, self.arguments.validation_tags
+        )
 
     def _generate_mask(self, offset_mapping):
         """Generate mask based on the offset mapping for pointer network
@@ -184,8 +212,19 @@ class Stage1TrainingPipeline:
             print(f"error encoding: {str(e)}")
 
         return doc_mask
+    
+    def _generate_batch_label(self, batched_offset_mapping, batched_correct_tags):
+        try:
+            # create an empty array of -100
+            batched_labels = []
+            for offset_mapping, correct_tags in zip(batched_offset_mapping, batched_correct_tags):
+                batched_labels.append(self._generate_label(offset_mapping, correct_tags))
+        except ValueError as e:
+            print(f"error encoding: {str(e)}")
+        
+        return torch.stack(batched_labels)
 
-    def _tokenize(self, input_sequence: List[str]):
+    def _tokenize(self, input_sequence: Union[List[str], List[List[str]]]):
         """Tokenize at sequence level. (not batch)
 
         Args:
@@ -205,7 +244,7 @@ class Stage1TrainingPipeline:
 
         return tokenized_input
 
-    def _epoch_train(self, corpus, tags, optim, scheduler=None, is_val=False):
+    def _epoch_train(self, iterator, optim, scheduler=None, is_val=False):
         epoch_loss = 0
         epoch_acc = 0
         if is_val:
@@ -222,9 +261,15 @@ class Stage1TrainingPipeline:
         pointer_mask = None
         correct_tags = None
 
+        with tqdm(total=len(iterator)) as pbar:
+            for batch in iterator:
+                tokenized_inputs = self._tokenize(batch["input_sequences"])
+                
+
+
         # FIXME: implement a proper batching-based method, currently it's in a single sequence style
         # TODO: change to every time re-compute the encoder
-        with tqdm(total=(len(corpus)//self.arguments.max_input_length + 1)) as pbar:
+        with tqdm(total=len(corpus)) as pbar:
             while True:
                 output_tags = []
                 groundtruth_tags = []
@@ -248,12 +293,11 @@ class Stage1TrainingPipeline:
                 #     attention_mask=tokenized_inputs.attention_mask.to(self.device),
                 # ).last_hidden_state
                 starting_index = ending_index
-
-                # decoder_step = 0
                 in_epoch_steps += 1
+                pbar.set_description(f"Processing batch: {in_epoch_steps}")
+
+                decoder_step = 0
                 batch_step = 0
-                batch_total_loss = 0
-            
                 while len(
                     input_tokens
                 ) >= self.arguments.min_input_length or ending_index > len(corpus):
@@ -285,19 +329,12 @@ class Stage1TrainingPipeline:
                             model_output,
                             nearest_boundary.to(self.device),
                         )  # loss computed till predicted_position. noqa 401
-                        batch_total_loss += loss.cpu().item()
-                        
+                        torch.cuda.empty_cache()
                         # only start a new batch if either higher than threshold or reach the tolerance
-                        if batch_step % self.arguments.pointer_tolerance == 0:
-                            if not is_val:
-                            # if in_epoch_steps % self.arguments.backward_count == 0:
-                                loss.backward()  # batch's loss
-                                optim.step()
-                                if scheduler:
-                                    scheduler.step()
-                                loss = 0
-                                optim.zero_grad()
-                            
+                        # if (
+                        #     possibility >= self.arguments.pointer_threshold
+                        #     or batch_step >= self.arguments.pointer_tolerance
+                        # ):
                             # batch_step = 0
                         tokenized_input_ids = tokenized_input_ids[
                             :, predicted_position + 1 :
@@ -314,10 +351,10 @@ class Stage1TrainingPipeline:
                         ).item()
                         pointer_mask = pointer_mask[predicted_position + 1 :]
                         output_tags += [0] * original_position + [1]
-
                         groundtruth_tags.extend(input_tags[: original_position + 1])
                         input_tokens = input_tokens[original_position + 1 :]
                         input_tags = input_tags[original_position + 1 :]
+                        pbar.update(original_position + 1)
                         # elif decoder_step >= len(input_tokens):
                         #     loss += f.nll_loss(
                         #         torch.log(model_output.squeeze()),
@@ -326,60 +363,47 @@ class Stage1TrainingPipeline:
                         #     output_tags.extend([0] * len(input_tokens))
                         #     pbar.update(len(input_tokens))
                         # else:
-                        # decoder_step += 1
+                        decoder_step += 1
                     except Exception as err:
-                        logger.error(f"error: {err}, current batch total loss size: {batch_total_loss.size}")
-                        logger.warning(f"go to another batch")
-                        break
-                        
-                
+                        logger.error(f"error: {err}, current input_ids size: {tokenized_input_ids.shape}")
+                        raise err
+
                 # finish one small batch
-                if not is_val and isinstance(loss, torch.Tensor):
-                    loss.backward() 
-                    optim.step()
-                    if scheduler:
-                        scheduler.step()
-                
-                batch_loss = batch_total_loss/batch_step
-                epoch_loss += batch_loss
-                    
-                required_length = self.arguments.max_input_length - len(input_tokens)
-                ending_index = starting_index + required_length
-                    
-                pbar.set_postfix(
-                    {
-                        "Last_loss": f"{batch_loss:.2f}",
-                        "Avg_cum_loss": f"{epoch_loss/in_epoch_steps:.2f}",
-                    }
-                )
-                pbar.update(1)   
-                self.total_steps += 1 
-                    
-                if self.total_steps % self.arguments.plot_steps == 0:
-                    self.tensorboard_writter.add_scalar(
-                        "Step Loss/train", batch_total_loss, self.total_steps
-                    )
-                    step_acc = self._accuracy(output_tags, groundtruth_tags)
-                    self.tensorboard_writter.add_scalar(
-                        "Step Accuracy/train", step_acc, self.total_steps
-                    )
-                    logger.info(f"last batch output_tags: {output_tags}, groundtruth: {groundtruth_tags}")
-                    epoch_acc = (epoch_acc + step_acc) / in_epoch_steps
-                    logger.info(f"current accuracy of epoch: {epoch_acc}")
-
-                if self.total_steps % self.arguments.persist_steps == 0:
-                    self._intermediate_persist(self.total_steps)
-
                 torch.cuda.empty_cache()
                 del tokenized_attention_mask
                 del tokenized_input_ids
                 del tokenized_inputs
-                del batch_total_loss
-
+                
+                required_length = self.arguments.max_input_length - len(input_tokens)
+                ending_index = starting_index + required_length
                 if (
                     starting_index >= len(corpus) - 1
                 ):  # means already loop over all corpus
                     break
+
+                if not is_val:
+                    # if in_epoch_steps % self.arguments.backward_count == 0:
+                    loss.backward()  # batch's loss
+                    optim.step()
+                    if scheduler:
+                        scheduler.step()
+                    if self.total_steps % self.arguments.plot_steps == 0:
+                        self.tensorboard_writter.add_scalar(
+                            "Step Loss/train", loss, self.total_steps
+                        )
+
+                self.total_steps += 1
+
+                epoch_loss += loss.item()
+
+                epoch_acc += self._accuracy(output_tags, groundtruth_tags)
+
+                pbar.set_postfix(
+                    {
+                        "Last_loss": f"{loss:.2f}",
+                        "Avg_cum_loss": f"{epoch_loss/in_epoch_steps:.2f}",
+                    }
+                )
 
         return {
             "epoch_loss": epoch_loss / in_epoch_steps,
@@ -394,9 +418,8 @@ class Stage1TrainingPipeline:
 
     def _accuracy(self, predictions, labels):
         if len(predictions) == len(labels):
-            return np.sum(np.array(predictions) == np.array(labels)) / len(labels)
-        else:
-            logger.warn("Output tags and groud truth are not having same length.")
+            return np.sum(predictions == labels) / len(labels)
+
         return 0
 
     def train(self):
@@ -419,7 +442,6 @@ class Stage1TrainingPipeline:
 
                 start_time = time.time()
 
-                logger.info(f"tags sample: {self.arguments.training_tags[:200]}")
                 train_epoch_outputs = self._epoch_train(
                     corpus=self.arguments.training_corpus,
                     tags=self.arguments.training_tags,

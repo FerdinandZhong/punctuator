@@ -7,6 +7,20 @@ from torch.nn import CrossEntropyLoss
 from transformers import BartModel, PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutput
 
+def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start_token_id: int):
+    """
+    Shift input ids one token to the right.
+    """
+    shifted_input_ids = input_ids.new_zeros(input_ids.shape)
+    shifted_input_ids[:, 1:] = input_ids[:, :-1].clone()
+    shifted_input_ids[:, 0] = decoder_start_token_id
+
+    if pad_token_id is None:
+        raise ValueError("self.model.config.pad_token_id has to be defined.")
+    # replace possible -100 values in labels by `pad_token_id`
+    shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
+
+    return shifted_input_ids
 
 def masked_softmax(
     x: torch.Tensor, mask: torch.Tensor, dim: int = -1, eps: float = 1e-45
@@ -31,7 +45,7 @@ def masked_softmax(
     x = x + (mask.float() + eps).log()
     return torch.nn.functional.softmax(x, dim=dim)
 
-
+#TODO: refering to question answering way of prediction next boundary
 class PointerNetwork(nn.Module):
     """
     From "Pointer Networks" by Vinyals et al. (2017)
@@ -89,12 +103,15 @@ class PointerPunctuator(PreTrainedModel):
         config.is_encoder_decoder = True
 
         if bart_model is None:
-            bart_model = BartModel(config)
-        self.encoder = bart_model.get_encoder()
-        self.decoder = bart_model.get_decoder()
+            self.bart_model = BartModel(config)
+        else:
+            self.bart_model = bart_model
+        self.encoder = self.bart_model.get_encoder()
+        self.decoder = self.bart_model.get_decoder()
         self.ptr_model = PointerNetwork(n_hidden=config.d_model)
 
         self.punctuator_head = nn.Linear(config.hidden_size, config.num_labels)
+        self.boundary_head = nn.Linear(config.hidden_size, 1) # predict nearest boundary once
 
         self.post_init()
 
@@ -173,6 +190,60 @@ class PointerPunctuator(PreTrainedModel):
         )  # B, Nd, Ne
 
         return boundary_score[:, decoder_input_index, :]
+
+    def detect_boundary_2(
+        self,
+        input_ids: torch.Tensor = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        encoder_outputs: Optional[List[torch.FloatTensor]] = None,
+        decoder_attention_mask: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        decoder_head_mask: Optional[torch.Tensor] = None,
+        cross_attn_head_mask: Optional[torch.Tensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ):
+        decoder_input_ids = shift_tokens_right(input_ids, self.config.pad_token_id, self.config.decoder_start_token_id)
+        # outputs = self.decoder(
+        #     input_ids=decoder_input_ids,
+        #     attention_mask=decoder_attention_mask,
+        #     encoder_hidden_states=encoder_outputs_last_hidden_state,
+        #     encoder_attention_mask=attention_mask,
+        #     head_mask=decoder_head_mask,
+        #     cross_attn_head_mask=cross_attn_head_mask,
+        #     past_key_values=past_key_values,
+        #     inputs_embeds=decoder_inputs_embeds,
+        #     use_cache=use_cache,
+        #     output_attentions=output_attentions,
+        #     output_hidden_states=output_hidden_states,
+        #     return_dict=return_dict,
+        # )
+        outputs = self.bart_model(
+            input_ids,
+            attention_mask=attention_mask,
+            decoder_input_ids=decoder_input_ids,
+            decoder_attention_mask=decoder_attention_mask,
+            head_mask=head_mask,
+            decoder_head_mask=decoder_head_mask,
+            cross_attn_head_mask=cross_attn_head_mask,
+            encoder_outputs=encoder_outputs,
+            inputs_embeds=inputs_embeds,
+            decoder_inputs_embeds=decoder_inputs_embeds,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+        sequence_output = outputs[0]
+
+        logits = self.boundary_head(sequence_output)
+
+        return logits.squeeze(-1).contiguous()
 
     def punctuator_generate(
         self,
