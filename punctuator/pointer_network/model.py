@@ -7,7 +7,10 @@ from torch.nn import CrossEntropyLoss
 from transformers import BartModel, PreTrainedModel
 from transformers.modeling_outputs import CausalLMOutput
 
-def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start_token_id: int):
+
+def shift_tokens_right(
+    input_ids: torch.Tensor, pad_token_id: int, decoder_start_token_id: int
+):
     """
     Shift input ids one token to the right.
     """
@@ -21,6 +24,7 @@ def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int, decoder_start
     shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
 
     return shifted_input_ids
+
 
 def masked_softmax(
     x: torch.Tensor, mask: torch.Tensor, dim: int = -1, eps: float = 1e-45
@@ -45,7 +49,8 @@ def masked_softmax(
     x = x + (mask.float() + eps).log()
     return torch.nn.functional.softmax(x, dim=dim)
 
-#TODO: refering to question answering way of prediction next boundary
+
+# TODO: refering to question answering way of prediction next boundary
 class PointerNetwork(nn.Module):
     """
     From "Pointer Networks" by Vinyals et al. (2017)
@@ -91,6 +96,7 @@ class PointerNetwork(nn.Module):
         # (B, Nd, Ne) <- (B, Nd, Ne, C), (B, Nd, 1, C)
         prod = self.v(torch.tanh(encoder_transform + decoder_transform)).squeeze(-1)
         # (B, Nd, Ne) <- (B, Nd, Ne)
+        # mask = mask.unsqueeze(1) # for batched
         log_score = masked_softmax(prod, mask, dim=-1, eps=eps)
         return log_score
 
@@ -111,11 +117,13 @@ class PointerPunctuator(PreTrainedModel):
         self.ptr_model = PointerNetwork(n_hidden=config.d_model)
 
         self.punctuator_head = nn.Linear(config.hidden_size, config.num_labels)
-        self.boundary_head = nn.Linear(config.hidden_size, 1) # predict nearest boundary once
+        self.boundary_head = nn.Linear(
+            config.hidden_size, 1
+        )  # predict nearest boundary once
 
         self.post_init()
 
-    def detect_boundary(
+    def forward(
         self,
         decoder_input_ids: torch.LongTensor,
         decoder_input_index: int,
@@ -208,7 +216,9 @@ class PointerPunctuator(PreTrainedModel):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ):
-        decoder_input_ids = shift_tokens_right(input_ids, self.config.pad_token_id, self.config.decoder_start_token_id)
+        decoder_input_ids = shift_tokens_right(
+            input_ids, self.config.pad_token_id, self.config.decoder_start_token_id
+        )
         # outputs = self.decoder(
         #     input_ids=decoder_input_ids,
         #     attention_mask=decoder_attention_mask,

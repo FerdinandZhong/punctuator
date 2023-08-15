@@ -12,8 +12,10 @@ from punctuator.utils import NORMAL_TOKEN_TAG
 
 logger = logging.getLogger(__name__)
 
+
 def read_line(text_line):
     return text_line.strip().split("\t")
+
 
 def generate_stage1_data(
     source_data,
@@ -50,8 +52,11 @@ def generate_stage1_data(
 
     return all_tokens, all_tags
 
+
 def generate_batched_stage1_data(
-    source_data, target_sequence_length, normal_token_tag: str = NORMAL_TOKEN_TAG,
+    source_data,
+    target_sequence_length,
+    normal_token_tag: str = NORMAL_TOKEN_TAG,
 ):
     all_tokens = []
     all_tags = []
@@ -86,12 +91,13 @@ def generate_batched_stage1_data(
                 _verify_senquence(tag_doc, target_sequence_length)
                 all_tokens.append(token_doc)
                 all_tags.append(tag_doc)
+                pbar.update(len(token_doc))
             except AssertionError:
                 logger.warning(f"error generating sequence: {token_doc}")
+                continue
+            finally:
                 token_doc = []
                 tag_doc = []
-                continue
-            pbar.update(len(token_doc))
     try:
         assert len(token_doc) == len(tag_doc), "Not equal length"
         all_tokens.append(token_doc)
@@ -103,7 +109,6 @@ def generate_batched_stage1_data(
     pbar.close()
 
     return all_tokens, all_tags
-
 
 
 # TODO stage2 data processing

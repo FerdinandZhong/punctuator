@@ -5,12 +5,12 @@ from typing import Dict, List, Optional, Union
 
 import numpy as np
 import torch
-import torch.nn.functional as f
+import torch.optim.adamw as adamw
 from pydantic import BaseModel
+from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import get_constant_schedule_with_warmup
-import torch.optim.adamw as adamw
 
 from punctuator.utils import Models
 
@@ -20,20 +20,26 @@ logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 1
 
 
-class EncodingDataset:
+def data_collator(batch):
+    assert all("input_sequences" in x for x in batch)
+    assert all("tags" in x for x in batch)
+    return {
+        "input_sequences": [x["input_sequences"] for x in batch],
+        "tags": [x["tags"] for x in batch],
+    }
+
+
+class EncodingDataset(Dataset):
     def __init__(self, input_seqeunces, tags):
         self.input_seqeunces = input_seqeunces
         self.tags = tags
 
     def __getitem__(self, idx):
-        item = {
-            "input_sequences": self.input_seqeunces[idx],
-            "tags": self.tags[idx]
-        }
+        item = {"input_sequences": self.input_seqeunces[idx], "tags": self.tags[idx]}
         return item
 
     def __len__(self):
-        return len(self.labels)
+        return len(self.tags)
 
 
 class Stage1TrainingBatchedArguments(BaseModel):
@@ -44,10 +50,10 @@ class Stage1TrainingBatchedArguments(BaseModel):
     """
 
     # basic args
-    training_corpus: List[str]
-    validation_corpus: List[str]
-    training_tags: List[int]
-    validation_tags: List[int]
+    training_corpus: List[List[str]]
+    validation_corpus: List[List[str]]
+    training_tags: List[List[int]]
+    validation_tags: List[List[int]]
     pretrained_model: Optional[Models] = Models.BART
     load_local_model: bool = False
     model_config_name: str
@@ -57,8 +63,7 @@ class Stage1TrainingBatchedArguments(BaseModel):
     # training ars
     epoch: int
     model_storage_dir: str
-    max_input_length: int = 320
-    min_input_length: int = 160
+    batch_size: int = 16
     pointer_threshold: float = 0.5
     pointer_tolerance: int = 10
     backward_count: int = 1
@@ -103,7 +108,9 @@ class Stage1TrainingBatchedPipeline:
             logger.info(config)
             self.model = PointerPunctuator(config)
             self.model.load_state_dict(
-                torch.load(os.path.join(training_arguments.model_name, "whole_model.bin"))
+                torch.load(
+                    os.path.join(training_arguments.model_name, "whole_model.bin")
+                )
             )
         else:
             pretrained_model = model_collection.model.from_pretrained(
@@ -114,6 +121,7 @@ class Stage1TrainingBatchedPipeline:
                 **training_arguments.additional_model_config,
             )
             self.model = PointerPunctuator(config, pretrained_model)
+            self.encoder = self.model.encoder
         if verbose:
             logger.info(f"Full model config: {self.model.config}")
 
@@ -123,22 +131,23 @@ class Stage1TrainingBatchedPipeline:
         )
 
         if torch.cuda.is_available() and training_arguments.use_gpu:
-            # if torch.cuda.device_count() > 1:
-            #     self.model = torch.nn.DataParallel(self.model)
-            #     self.model.cuda()
-            #     self.device = torch.device("cuda")
-            #     self.is_parallel = True
-            # else: # FIXME: currently no parallel available
-            self.device = torch.device(f"cuda:{training_arguments.gpu_device}")
-            self.model.to(self.device)
-            self.is_parallel = False
+            if torch.cuda.device_count() > 1:
+                self.model = torch.nn.DataParallel(self.model)
+                self.encoder = torch.nn.DataParallel(self.encoder)
+                self.model.cuda()
+                self.device = torch.device("cuda")
+                self.is_parallel = True
+            else:
+                self.device = torch.device(f"cuda:{training_arguments.gpu_device}")
+                self.model.to(self.device)
+                self.is_parallel = False
         else:
             self.device = torch.device("cpu")
             self.is_parallel = False
 
         if verbose:
             logger.info(f"Full model architecture: {self.model}")
-        
+
         self.training_dataset = EncodingDataset(
             self.arguments.training_corpus, self.arguments.training_tags
         )
@@ -164,7 +173,7 @@ class Stage1TrainingBatchedPipeline:
             # set labels whose first offset position is 0 and the second is not 0
             doc_mask[(arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)] = 1
         except ValueError as e:
-            print(f"error encoding: {str(e)}")
+            logger.error(f"error encoding: {str(e)}")
 
         return doc_mask
 
@@ -184,7 +193,7 @@ class Stage1TrainingBatchedPipeline:
             for offset_mapping in batched_offset_mapping:
                 batched_doc_mask.append(self._generate_mask(offset_mapping))
         except ValueError as e:
-            print(f"error encoding: {str(e)}")
+            logger.error(f"error encoding: {str(e)}")
 
         return torch.stack(batched_doc_mask)
 
@@ -205,24 +214,44 @@ class Stage1TrainingBatchedPipeline:
             # logger.debug(f"offset_mapping shape: {offset_mapping.shape}, tags: {len(correct_tags)}")
             # logger.debug(f"check: {doc_mask[(arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)], doc_mask[(arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)].shape}")
             # set labels whose first offset position is 0 and the second is not 0
-            doc_mask[(arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)] = torch.tensor(
-                correct_tags
-            )
+            doc_mask[
+                (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
+            ] = correct_tags.clone().detach()
         except ValueError as e:
-            print(f"error encoding: {str(e)}")
+            logger.error(f"error encoding: {str(e)}")
 
         return doc_mask
-    
+
     def _generate_batch_label(self, batched_offset_mapping, batched_correct_tags):
         try:
             # create an empty array of -100
             batched_labels = []
-            for offset_mapping, correct_tags in zip(batched_offset_mapping, batched_correct_tags):
-                batched_labels.append(self._generate_label(offset_mapping, correct_tags))
+            for offset_mapping, correct_tags in zip(
+                batched_offset_mapping, batched_correct_tags
+            ):
+                batched_labels.append(
+                    self._generate_label(offset_mapping, correct_tags)
+                )
         except ValueError as e:
-            print(f"error encoding: {str(e)}")
-        
+            logger.error(f"error encoding: {str(e)}")
+
         return torch.stack(batched_labels)
+
+    def _generate_padding_indices(self, batched_input_ids):
+        padding_startings = []
+        for batched_input_id in batched_input_ids:
+            padding_starting = (
+                (batched_input_id == self.tokenizer.pad_token_id)
+                .nonzero()
+                .squeeze()
+                .tolist()
+            )
+            if isinstance(padding_starting, list) and len(padding_starting) > 0:
+                padding_startings.append(padding_starting[0])
+            else:
+                padding_startings.append(len(batched_input_id) - 1)
+
+        return padding_startings
 
     def _tokenize(self, input_sequence: Union[List[str], List[List[str]]]):
         """Tokenize at sequence level. (not batch)
@@ -244,170 +273,171 @@ class Stage1TrainingBatchedPipeline:
 
         return tokenized_input
 
-    def _epoch_train(self, iterator, optim, scheduler=None, is_val=False):
+    def _epoch_train(
+        self, iterator, optim, scheduler=None, criterion=None, is_val=False
+    ):
         epoch_loss = 0
-        epoch_acc = 0
+        epoch_total_acc = 0
         if is_val:
             self.model.train(False)
         else:
             self.model.train()
 
-        in_epoch_steps = 0
-        starting_index = 0
-        ending_index = self.arguments.max_input_length
-        input_tokens = []
-        input_tags = []
-        tokenized_input_ids = None
-        pointer_mask = None
-        correct_tags = None
-
+        in_epoch_steps = 1
         with tqdm(total=len(iterator)) as pbar:
             for batch in iterator:
-                tokenized_inputs = self._tokenize(batch["input_sequences"])
-                
+                # TODO: solve the data loader issue
 
+                groundtruth_tags = torch.tensor(batch["tags"])
+                input_sequences = batch["input_sequences"]
+                # print(f"batch input_sequences: {input_sequences}")
+                batch_size = len(input_sequences)
 
-        # FIXME: implement a proper batching-based method, currently it's in a single sequence style
-        # TODO: change to every time re-compute the encoder
-        with tqdm(total=len(corpus)) as pbar:
-            while True:
-                output_tags = []
-                groundtruth_tags = []
-                loss = 0
-                input_tokens += corpus[starting_index:ending_index]
-                input_tags += tags[starting_index:ending_index]
-                # logger.info(
-                #     f"input tokens length: {len(input_tokens)}, input tags length: {len(input_tags)}"
-                # )
-                tokenized_inputs = self._tokenize(input_tokens)  # create new tensor
-                tokenized_input_ids = tokenized_inputs.input_ids.to(self.device)
-                tokenized_attention_mask = tokenized_inputs.attention_mask.to(self.device)
-                pointer_mask = self._generate_mask(
-                    tokenized_inputs.offset_mapping.squeeze()
-                )
-                correct_tags = self._generate_label(
-                    tokenized_inputs.offset_mapping.squeeze(), input_tags
-                )
-                # encoder_outputs_lhs = self.model.encoder(
-                #     input_ids=tokenized_input_ids,
-                #     attention_mask=tokenized_inputs.attention_mask.to(self.device),
-                # ).last_hidden_state
-                starting_index = ending_index
-                in_epoch_steps += 1
                 pbar.set_description(f"Processing batch: {in_epoch_steps}")
 
-                decoder_step = 0
+                output_tags = [[]] * batch_size
                 batch_step = 0
-                while len(
-                    input_tokens
-                ) >= self.arguments.min_input_length or ending_index > len(corpus):
+                batch_total_loss = 0
+                remaining_indexes = list(range(batch_size))
+                while batch_size > 0:
                     batch_step += 1
-                    try:
-                    # decoder_step = (
-                    #     decoder_step + 1
-                    #     if tokenized_input_ids.squeeze()[0].item()
-                    #     in self.tokenizer.all_special_ids
-                    #     else decoder_step
-                    # )
-                    # decoder_ids = tokenized_input_ids[:, : decoder_step + 1]
-                    # model_output = self.model.detect_boundary(
-                    #     decoder_input_ids=decoder_ids.to(self.device),
-                    #     decoder_input_index=decoder_step,
-                    #     pointer_mask=pointer_mask.to(self.device),
-                    #     encoder_outputs_last_hidden_state=encoder_outputs_lhs,
-                    # )
-                        model_output = self.model.detect_boundary_2(
-                            input_ids = tokenized_input_ids,
-                            attention_mask=tokenized_attention_mask
-                            # encoder_outputs_last_hidden_state=encoder_outputs_lhs
+                    # every time need to do the tokenization (for padding)
+                    tokenized_inputs = self._tokenize(input_sequences)
+                    tokenized_input_ids = tokenized_inputs["input_ids"]
+                    tokenized_attention_masks = tokenized_inputs["attention_mask"]
+                    pointer_mask = self._generate_batch_mask(
+                        tokenized_inputs["offset_mapping"]
+                    )
+                    correct_tags = self._generate_batch_label(
+                        tokenized_inputs["offset_mapping"], groundtruth_tags
+                    )
+                    padding_startings = self._generate_padding_indices(
+                        tokenized_input_ids
+                    )
+                    # TODO: remove the input that reaching the padding stage or over the length
+                    encoder_outputs_lhs = self.encoder(
+                        input_ids=tokenized_input_ids,
+                        attention_mask=tokenized_attention_masks,
+                    ).last_hidden_state
+                    model_output = self.model(
+                        decoder_input_ids=tokenized_input_ids.to(self.device),
+                        decoder_input_index=0,
+                        pointer_mask=pointer_mask.to(self.device),
+                        encoder_outputs_last_hidden_state=encoder_outputs_lhs,
+                    )
+                    # for batching, every step counts
+                    predicted_position_list = model_output.argmax(dim=-1).cpu().numpy()
+                    nearest_boundary = correct_tags.argmax(-1)
+
+                    step_loss = criterion(
+                        model_output,
+                        nearest_boundary.to(self.device),
+                        # correct_tags.float().to(self.device)
+                    )
+                    if self.is_parallel:
+                        step_loss = step_loss.mean()
+                    batch_total_loss += step_loss.cpu().item()
+                    if not is_val:
+                        step_loss.backward()  # batch's loss
+                        optim.step()
+                        if scheduler:
+                            scheduler.step()
+                        optim.zero_grad()
+
+                    # to generate the new batch
+                    new_input_sequences = []
+                    new_groundtruth_tags = []
+                    new_remaining_indexes = []
+                    new_index = 0
+                    for (
+                        index,
+                        predicted_position,
+                        padding_starting,
+                        input_sequence,
+                        groundtruth_tag,
+                    ) in zip(
+                        remaining_indexes,
+                        predicted_position_list,
+                        padding_startings,
+                        input_sequences,
+                        groundtruth_tags,
+                    ):
+                        if predicted_position >= padding_starting:
+                            output_tags[index].extend([0] * (padding_starting + 1))
+                        else:
+                            output_tags[index].extend([0] * predicted_position + [1])
+                            remaining_tag = correct_tags[new_index][predicted_position + 1 :]
+                            if 1 in remaining_tag:
+                                new_remaining_indexes.append(index)
+                                current_tokenized_input_ids = tokenized_input_ids[new_index]
+                                current_tokenized_input_ids = current_tokenized_input_ids[
+                                    predicted_position + 1 :
+                                ]
+                                current_tokenized_attention_mask = (
+                                    tokenized_attention_masks[new_index]
+                                )
+                                current_tokenized_attention_mask = (
+                                    current_tokenized_attention_mask[
+                                        predicted_position + 1 :
+                                    ]
+                                )
+                                current_pointer_mask = pointer_mask[new_index]
+
+                                original_position = torch.sum(
+                                    current_pointer_mask[: predicted_position + 1].squeeze()
+                                    > 0
+                                ).item()
+                                # TODO: generate new correct tags
+                                new_input_sequences.append(
+                                    input_sequence[original_position + 1 :]
+                                )
+                                new_groundtruth_tags.append(
+                                    groundtruth_tag[original_position + 1 :]
+                                )
+                        new_index += 1
+
+                    input_sequences = new_input_sequences
+                    groundtruth_tags = new_groundtruth_tags
+                    remaining_indexes = new_remaining_indexes
+                    batch_size = len(input_sequences)
+
+                    if in_epoch_steps == 1:
+                        logger.info(f"remaining batch size: {batch_size}")
+                        logger.info(
+                            f"remaining indexes: {remaining_indexes}"
                         )
-                        predicted_position = model_output.argmax(dim=-1).squeeze().item()
-                        # possibility = model_output[:, predicted_position].squeeze().item()
-                        nearest_boundary = torch.tensor([correct_tags.argmax()])
-
-                        loss += f.cross_entropy(
-                            model_output,
-                            nearest_boundary.to(self.device),
-                        )  # loss computed till predicted_position. noqa 401
-                        torch.cuda.empty_cache()
-                        # only start a new batch if either higher than threshold or reach the tolerance
-                        # if (
-                        #     possibility >= self.arguments.pointer_threshold
-                        #     or batch_step >= self.arguments.pointer_tolerance
-                        # ):
-                            # batch_step = 0
-                        tokenized_input_ids = tokenized_input_ids[
-                            :, predicted_position + 1 :
-                        ]
-                        tokenized_attention_mask = tokenized_attention_mask[
-                            :, predicted_position + 1 :
-                        ]
-                        correct_tags = correct_tags[predicted_position + 1 :]
-                        # encoder_outputs_lhs = encoder_outputs_lhs[
-                        #     :, predicted_position + 1 :, :
-                        # ]
-                        original_position = torch.sum(
-                            pointer_mask[: predicted_position + 1].squeeze() > 0
-                        ).item()
-                        pointer_mask = pointer_mask[predicted_position + 1 :]
-                        output_tags += [0] * original_position + [1]
-                        groundtruth_tags.extend(input_tags[: original_position + 1])
-                        input_tokens = input_tokens[original_position + 1 :]
-                        input_tags = input_tags[original_position + 1 :]
-                        pbar.update(original_position + 1)
-                        # elif decoder_step >= len(input_tokens):
-                        #     loss += f.nll_loss(
-                        #         torch.log(model_output.squeeze()),
-                        #         correct_tags.argmax().to(self.device),
-                        #     )  # loss computed till predicted_position. noqa 401
-                        #     output_tags.extend([0] * len(input_tokens))
-                        #     pbar.update(len(input_tokens))
-                        # else:
-                        decoder_step += 1
-                    except Exception as err:
-                        logger.error(f"error: {err}, current input_ids size: {tokenized_input_ids.shape}")
-                        raise err
-
-                # finish one small batch
-                torch.cuda.empty_cache()
-                del tokenized_attention_mask
-                del tokenized_input_ids
-                del tokenized_inputs
-                
-                required_length = self.arguments.max_input_length - len(input_tokens)
-                ending_index = starting_index + required_length
-                if (
-                    starting_index >= len(corpus) - 1
-                ):  # means already loop over all corpus
-                    break
-
-                if not is_val:
-                    # if in_epoch_steps % self.arguments.backward_count == 0:
-                    loss.backward()  # batch's loss
-                    optim.step()
-                    if scheduler:
-                        scheduler.step()
-                    if self.total_steps % self.arguments.plot_steps == 0:
-                        self.tensorboard_writter.add_scalar(
-                            "Step Loss/train", loss, self.total_steps
-                        )
+                        logger.info(f"boundaries: {nearest_boundary}")
 
                 self.total_steps += 1
+                batch_loss = batch_total_loss / batch_step
 
-                epoch_loss += loss.item()
-
-                epoch_acc += self._accuracy(output_tags, groundtruth_tags)
+                in_epoch_steps += 1
+                epoch_loss += batch_loss
+                last_batch_accuracy = self._accuracy(output_tags, batch["tags"])
+                epoch_total_acc += last_batch_accuracy
 
                 pbar.set_postfix(
                     {
-                        "Last_loss": f"{loss:.2f}",
+                        "Last_loss": f"{batch_loss:.2f}",
                         "Avg_cum_loss": f"{epoch_loss/in_epoch_steps:.2f}",
+                        "Last_acc": f"{last_batch_accuracy:.4f}"
                     }
                 )
+                pbar.update(1)
+
+                if self.total_steps % self.arguments.plot_steps == 0:
+                    self.tensorboard_writter.add_scalar(
+                        "Step Loss/train", batch_loss, self.total_steps
+                    )
+                    step_acc = epoch_total_acc / self.total_steps
+                    self.tensorboard_writter.add_scalar(
+                        "Step Accuracy/train", step_acc, self.total_steps
+                    )
+                    logger.info(f"current accuracy of epoch: {step_acc:.2f}")
 
         return {
             "epoch_loss": epoch_loss / in_epoch_steps,
-            "epoch_acc": epoch_acc / in_epoch_steps,
+            "epoch_acc": epoch_total_acc / in_epoch_steps,
         }
 
     def _epoch_time(self, start_time, end_time):
@@ -416,16 +446,34 @@ class Stage1TrainingBatchedPipeline:
         elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
         return elapsed_mins, elapsed_secs
 
-    def _accuracy(self, predictions, labels):
-        if len(predictions) == len(labels):
-            return np.sum(predictions == labels) / len(labels)
+    def _accuracy(self, prediction_logits, labels):
+        true_preds = np.array(prediction_logits).flatten()
+        true_labels = np.array(labels).flatten()
+        if true_preds.shape[0] == true_labels.shape[0]:
+            print(np.sum(true_preds == true_labels))
+            return np.sum(true_preds == true_labels) / true_labels.shape[0]
 
         return 0
 
     def train(self):
         logger.info("start training")
 
+        train_loader = DataLoader(
+            self.training_dataset,
+            batch_size=self.arguments.batch_size,
+            shuffle=True,
+            collate_fn=data_collator,
+        )
+        val_loader = DataLoader(
+            self.val_dataset,
+            batch_size=self.arguments.batch_size,
+            shuffle=True,
+            collate_fn=data_collator,
+        )
+
         optim = adamw.AdamW(self.model.parameters(), lr=1e-6)
+        # criterion = torch.nn.BCE()
+        criterion = torch.nn.CrossEntropyLoss()
 
         scheduler = get_constant_schedule_with_warmup(
             optim,
@@ -441,18 +489,17 @@ class Stage1TrainingBatchedPipeline:
                 pbar.set_description(f"Processing epoch: {epoch + 1}")
 
                 start_time = time.time()
-
                 train_epoch_outputs = self._epoch_train(
-                    corpus=self.arguments.training_corpus,
-                    tags=self.arguments.training_tags,
+                    iterator=train_loader,
                     optim=optim,
                     scheduler=scheduler,
+                    criterion=criterion,
                 )
                 val_epoch_outputs = self._epoch_train(
-                    corpus=self.arguments.validation_corpus,
-                    tags=self.arguments.validation_tags,
+                    iterator=val_loader,
                     optim=optim,
                     scheduler=scheduler,
+                    criterion=criterion,
                     is_val=True,
                 )
 
@@ -541,9 +588,17 @@ class Stage1TrainingBatchedPipeline:
         output_config_file = f"{self.arguments.model_storage_dir}/model_config.json"
         self.model.config.to_json_file(output_config_file, use_diff=True)
 
-        torch.save(
-            self.best_state_dict,
-            os.path.join(self.arguments.model_storage_dir, "whole_model.bin"),
-        )
+        if self.is_parallel:
+            self.model.module.load_state_dict(self.best_state_dict)
+            torch.save(
+                self.model.module.lm_model.state_dict(),
+                os.path.join(self.arguments.model_storage_dir, "whole_model.bin"),
+            )
+        else:
+            self.model.load_state_dict(self.best_state_dict)
+            torch.save(
+                self.model.lm_model.state_dict(),
+                os.path.join(self.arguments.model_storage_dir, "whole_model.bin"),
+            )
 
         logger.info(f"model stored to {self.arguments.model_storage_dir}")

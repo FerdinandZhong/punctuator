@@ -6,11 +6,11 @@ from typing import Dict, List, Optional
 import numpy as np
 import torch
 import torch.nn.functional as f
+import torch.optim.adamw as adamw
 from pydantic import BaseModel
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import get_constant_schedule_with_warmup
-import torch.optim.adamw as adamw
 
 from punctuator.utils import Models
 
@@ -224,7 +224,7 @@ class Stage1TrainingPipeline:
 
         # FIXME: implement a proper batching-based method, currently it's in a single sequence style
         # TODO: change to every time re-compute the encoder
-        with tqdm(total=(len(corpus)//self.arguments.max_input_length + 1)) as pbar:
+        with tqdm(total=(len(corpus) // self.arguments.max_input_length + 1)) as pbar:
             while True:
                 output_tags = []
                 groundtruth_tags = []
@@ -236,7 +236,9 @@ class Stage1TrainingPipeline:
                 # )
                 tokenized_inputs = self._tokenize(input_tokens)  # create new tensor
                 tokenized_input_ids = tokenized_inputs.input_ids.to(self.device)
-                tokenized_attention_mask = tokenized_inputs.attention_mask.to(self.device)
+                tokenized_attention_mask = tokenized_inputs.attention_mask.to(
+                    self.device
+                )
                 pointer_mask = self._generate_mask(
                     tokenized_inputs.offset_mapping.squeeze()
                 )
@@ -253,31 +255,33 @@ class Stage1TrainingPipeline:
                 in_epoch_steps += 1
                 batch_step = 0
                 batch_total_loss = 0
-            
+
                 while len(
                     input_tokens
                 ) >= self.arguments.min_input_length or ending_index > len(corpus):
                     batch_step += 1
                     try:
-                    # decoder_step = (
-                    #     decoder_step + 1
-                    #     if tokenized_input_ids.squeeze()[0].item()
-                    #     in self.tokenizer.all_special_ids
-                    #     else decoder_step
-                    # )
-                    # decoder_ids = tokenized_input_ids[:, : decoder_step + 1]
-                    # model_output = self.model.detect_boundary(
-                    #     decoder_input_ids=decoder_ids.to(self.device),
-                    #     decoder_input_index=decoder_step,
-                    #     pointer_mask=pointer_mask.to(self.device),
-                    #     encoder_outputs_last_hidden_state=encoder_outputs_lhs,
-                    # )
+                        # decoder_step = (
+                        #     decoder_step + 1
+                        #     if tokenized_input_ids.squeeze()[0].item()
+                        #     in self.tokenizer.all_special_ids
+                        #     else decoder_step
+                        # )
+                        # decoder_ids = tokenized_input_ids[:, : decoder_step + 1]
+                        # model_output = self.model.detect_boundary(
+                        #     decoder_input_ids=decoder_ids.to(self.device),
+                        #     decoder_input_index=decoder_step,
+                        #     pointer_mask=pointer_mask.to(self.device),
+                        #     encoder_outputs_last_hidden_state=encoder_outputs_lhs,
+                        # )
                         model_output = self.model.detect_boundary_2(
-                            input_ids = tokenized_input_ids,
+                            input_ids=tokenized_input_ids,
                             attention_mask=tokenized_attention_mask
                             # encoder_outputs_last_hidden_state=encoder_outputs_lhs
                         )
-                        predicted_position = model_output.argmax(dim=-1).squeeze().item()
+                        predicted_position = (
+                            model_output.argmax(dim=-1).squeeze().item()
+                        )
                         # possibility = model_output[:, predicted_position].squeeze().item()
                         nearest_boundary = torch.tensor([correct_tags.argmax()])
 
@@ -286,18 +290,18 @@ class Stage1TrainingPipeline:
                             nearest_boundary.to(self.device),
                         )  # loss computed till predicted_position. noqa 401
                         batch_total_loss += loss.cpu().item()
-                        
+
                         # only start a new batch if either higher than threshold or reach the tolerance
                         if batch_step % self.arguments.pointer_tolerance == 0:
                             if not is_val:
-                            # if in_epoch_steps % self.arguments.backward_count == 0:
+                                # if in_epoch_steps % self.arguments.backward_count == 0:
                                 loss.backward()  # batch's loss
                                 optim.step()
                                 if scheduler:
                                     scheduler.step()
                                 loss = 0
                                 optim.zero_grad()
-                            
+
                             # batch_step = 0
                         tokenized_input_ids = tokenized_input_ids[
                             :, predicted_position + 1 :
@@ -328,33 +332,34 @@ class Stage1TrainingPipeline:
                         # else:
                         # decoder_step += 1
                     except Exception as err:
-                        logger.error(f"error: {err}, current batch total loss size: {batch_total_loss.size}")
+                        logger.error(
+                            f"error: {err}, current batch total loss size: {batch_total_loss.size}"
+                        )
                         logger.warning(f"go to another batch")
                         break
-                        
-                
+
                 # finish one small batch
                 if not is_val and isinstance(loss, torch.Tensor):
-                    loss.backward() 
+                    loss.backward()
                     optim.step()
                     if scheduler:
                         scheduler.step()
-                
-                batch_loss = batch_total_loss/batch_step
+
+                batch_loss = batch_total_loss / batch_step
                 epoch_loss += batch_loss
-                    
+
                 required_length = self.arguments.max_input_length - len(input_tokens)
                 ending_index = starting_index + required_length
-                    
+
                 pbar.set_postfix(
                     {
                         "Last_loss": f"{batch_loss:.2f}",
                         "Avg_cum_loss": f"{epoch_loss/in_epoch_steps:.2f}",
                     }
                 )
-                pbar.update(1)   
-                self.total_steps += 1 
-                    
+                pbar.update(1)
+                self.total_steps += 1
+
                 if self.total_steps % self.arguments.plot_steps == 0:
                     self.tensorboard_writter.add_scalar(
                         "Step Loss/train", batch_total_loss, self.total_steps
@@ -363,7 +368,9 @@ class Stage1TrainingPipeline:
                     self.tensorboard_writter.add_scalar(
                         "Step Accuracy/train", step_acc, self.total_steps
                     )
-                    logger.info(f"last batch output_tags: {output_tags}, groundtruth: {groundtruth_tags}")
+                    logger.info(
+                        f"last batch output_tags: {output_tags}, groundtruth: {groundtruth_tags}"
+                    )
                     epoch_acc = (epoch_acc + step_acc) / in_epoch_steps
                     logger.info(f"current accuracy of epoch: {epoch_acc}")
 

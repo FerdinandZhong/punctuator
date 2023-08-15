@@ -6,11 +6,11 @@ from typing import Dict, List, Optional
 import numpy as np
 import torch
 import torch.nn.functional as f
+import torch.optim.adamw as adamw
 from pydantic import BaseModel
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import get_constant_schedule_with_warmup
-import torch.optim.adamw as adamw
 
 from punctuator.utils import Models
 
@@ -88,7 +88,9 @@ class Stage1TrainingPipeline:
             logger.info(config)
             self.model = PointerPunctuator(config)
             self.model.load_state_dict(
-                torch.load(os.path.join(training_arguments.model_name, "whole_model.bin"))
+                torch.load(
+                    os.path.join(training_arguments.model_name, "whole_model.bin")
+                )
             )
         else:
             pretrained_model = model_collection.model.from_pretrained(
@@ -242,7 +244,9 @@ class Stage1TrainingPipeline:
                 # )
                 tokenized_inputs = self._tokenize(input_tokens)  # create new tensor
                 tokenized_input_ids = tokenized_inputs.input_ids.to(self.device)
-                tokenized_attention_mask = tokenized_inputs.attention_mask.to(self.device)
+                tokenized_attention_mask = tokenized_inputs.attention_mask.to(
+                    self.device
+                )
                 pointer_mask = self._generate_mask(
                     tokenized_inputs.offset_mapping.squeeze()
                 )
@@ -255,7 +259,7 @@ class Stage1TrainingPipeline:
                 in_epoch_steps += 1
                 batch_step = 0
                 batch_total_loss = 0
-            
+
                 while len(
                     input_tokens
                 ) >= self.arguments.min_input_length or ending_index > len(corpus):
@@ -269,7 +273,7 @@ class Stage1TrainingPipeline:
                         )
                         if decoder_step >= len(input_tokens):
                             if not is_val and isinstance(loss, torch.Tensor):
-                                loss.backward() 
+                                loss.backward()
                                 optim.step()
                                 if scheduler:
                                     scheduler.step()
@@ -277,21 +281,25 @@ class Stage1TrainingPipeline:
                             pbar.update(len(input_tokens))
                             break
 
-                        decoder_ids = tokenized_input_ids[:, :decoder_step + 1]
+                        decoder_ids = tokenized_input_ids[:, : decoder_step + 1]
                         encoder_outputs_lhs = self.model.encoder(
                             input_ids=tokenized_input_ids,
-                            attention_mask=tokenized_attention_mask
+                            attention_mask=tokenized_attention_mask,
                         ).last_hidden_state
-                        model_output = self.model.detect_boundary(
+                        model_output = self.model(
                             decoder_input_ids=decoder_ids.to(self.device),
                             decoder_input_index=decoder_step,
                             pointer_mask=pointer_mask.to(self.device),
                             encoder_outputs_last_hidden_state=encoder_outputs_lhs,
                         )
-                        predicted_position = model_output.argmax(dim=-1).squeeze().item()
-                        possibility = model_output[:, predicted_position].squeeze().item()
-                        nearest_boundary = torch.tensor([correct_tags.argmax()]) 
-                        
+                        predicted_position = (
+                            model_output.argmax(dim=-1).squeeze().item()
+                        )
+                        possibility = (
+                            model_output[:, predicted_position].squeeze().item()
+                        )
+                        nearest_boundary = torch.tensor([correct_tags.argmax()])
+
                         loss += f.cross_entropy(
                             model_output,
                             nearest_boundary.to(self.device),
@@ -300,18 +308,21 @@ class Stage1TrainingPipeline:
                         batch_total_loss += loss.cpu().item()
                         if is_val:
                             loss = 0
-                        
+
                         # only start a new batch if either higher than threshold or reach the tolerance
-                        if possibility >= self.arguments.pointer_threshold or batch_step % self.arguments.pointer_tolerance == 0:
+                        if (
+                            possibility >= self.arguments.pointer_threshold
+                            or batch_step % self.arguments.pointer_tolerance == 0
+                        ):
                             if not is_val:
-                            # if in_epoch_steps % self.arguments.backward_count == 0:
+                                # if in_epoch_steps % self.arguments.backward_count == 0:
                                 loss.backward()  # batch's loss
                                 optim.step()
                                 if scheduler:
                                     scheduler.step()
                                 loss = 0
                                 optim.zero_grad()
-                                
+
                             # batch_step = 0
                             tokenized_input_ids = tokenized_input_ids[
                                 :, predicted_position + 1 :
@@ -327,46 +338,51 @@ class Stage1TrainingPipeline:
                                 pointer_mask[: predicted_position + 1].squeeze() > 0
                             ).item()
                             pointer_mask = pointer_mask[predicted_position + 1 :]
-                            output_tags += [0] * predicted_position + [1]
-                            groundtruth_tags.extend(correct_tags[: predicted_position + 1])
+                            output_tags += [0] * original_position + [1]
+                            groundtruth_tags.extend(
+                                input_tags[: original_position + 1]
+                            )
+                            if len(output_tags) > len(groundtruth_tags):
+                                output_tags = output_tags[:len(groundtruth_tags)]
                             input_tokens = input_tokens[original_position + 1 :]
                             input_tags = input_tags[original_position + 1 :]
                             decoder_step = 0
                         else:
                             decoder_step += 1
                     except Exception as err:
-                        logger.error(f"error: {err}, current batch total loss size: {loss.size}")
+                        logger.error(
+                            f"error: {err}, current batch total loss size: {loss.size}"
+                        )
                         logger.warning(f"go to another batch")
                         break
-                        
-                
+
                 # finish one small batch
-                batch_loss = batch_total_loss/batch_step
+                batch_loss = batch_total_loss / batch_step
                 epoch_loss += batch_loss
-                epoch_acc += self._accuracy(output_tags, groundtruth_tags)
+                last_batch_accuracy = self._accuracy(output_tags, groundtruth_tags)
+                epoch_acc += last_batch_accuracy
 
                 required_length = self.arguments.max_input_length - len(input_tokens)
                 ending_index = starting_index + required_length
                 pbar.update(required_length)
-                    
+
                 pbar.set_postfix(
                     {
                         "Last_loss": f"{batch_loss:.2f}",
                         "Avg_cum_loss": f"{epoch_loss/in_epoch_steps:.2f}",
+                        "Last_acc": f"{last_batch_accuracy:.2f}"
                     }
                 )
-                self.total_steps += 1 
-                    
+                self.total_steps += 1
+
                 if self.total_steps % self.arguments.plot_steps == 0:
                     self.tensorboard_writter.add_scalar(
                         "Step Loss/train", batch_loss, self.total_steps
                     )
-                    step_acc = self._accuracy(output_tags, groundtruth_tags)
                     self.tensorboard_writter.add_scalar(
-                        "Step Accuracy/train", step_acc, self.total_steps
+                        "Step Accuracy/train", last_batch_accuracy, self.total_steps
                     )
-                    epoch_acc += step_acc
-                    logger.info(f"current accuracy of epoch: {step_acc:.2f}")
+                    logger.info(f"current accuracy: {last_batch_accuracy:.2f}")
 
                 if self.total_steps % self.arguments.persist_steps == 0:
                     self._intermediate_persist(self.total_steps)
@@ -395,9 +411,13 @@ class Stage1TrainingPipeline:
 
     def _accuracy(self, predictions, labels):
         if len(predictions) == len(labels):
-            return np.sum(np.array(predictions) == np.array(labels)) / len(labels)
+            predictions = np.array(predictions)
+            labels = np.array(labels)
+            idx = labels != 0
+            correct_idx = predictions[idx] / labels[idx]
+            return np.mean(correct_idx)
         else:
-            logger.warn("Output tags and groud truth are not having same length.")
+            logger.warn(f"Output tags {len(predictions)} and groud truth {len(labels)} are not having same length.")
         return 0
 
     def train(self):
