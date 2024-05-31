@@ -1,6 +1,6 @@
-torch>=1.7.1
-typer==0.3.2
+torch
+typer
 tqdm>=4.61.2
-transformers>=4.12.0
-pydantic==1.8.2
+transformers
+pydantic>=2.0
 plane>=0.2.0

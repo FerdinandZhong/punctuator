@@ -5,7 +5,10 @@ from punctuator.utils import Models
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--last_layer", help="last layer of the output directory", default=""
+    "--model_storage_dir", help="The storage directory of the finetuned model", default="models/"
+)
+parser.add_argument(
+    "--tensorboard_log_dir", help="The tensorboard directory of the finetuning", default="runs/"
 )
 args = parser.parse_args()
 
@@ -38,18 +41,18 @@ training_args = NERTrainingArguments(
     validation_corpus=validation_corpus,
     training_tags=training_tags,
     validation_tags=validation_tags,
-    model=Models.BERT_TOKEN_CLASSIFICATION,
-    model_weight_name="bert-large-uncased",
-    tokenizer_name="bert-large-uncased",
+    model=Models.BERT_KAN,
+    model_weight_name="bert-base-uncased",
+    tokenizer_name="bert-base-uncased",
     epoch=40,
     batch_size=32,
-    model_storage_dir=f"models/iwslt_bert_finetune_rdrop/{args.last_layer}",
+    model_storage_dir=args.model_storage_dir,
     addtional_model_config={"dropout": 0.3, "attention_dropout": 0.3},
     gpu_device=0,
     warm_up_steps=1000,
     r_drop=True,
     r_alpha=0.5,
-    tensorboard_log_dir=f"runs/iwslt_bert_finetune_rdrop/{args.last_layer}",
+    tensorboard_log_dir=args.tensorboard_log_dir,
     label2id=label2id,
     early_stop_count=5,
 )

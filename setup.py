@@ -22,13 +22,10 @@ setup(
     packages=find_packages(exclude=["tests*", "example*"]),
     classifiers=[
         "Programming Language :: Python :: 3 :: Only",
-        "Programming Language :: Python :: 3.6",
-        "Programming Language :: Python :: 3.7",
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Topic :: Software Development :: Libraries :: Python Modules",
     ],
-    python_requires=">3.6",
+    python_requires=">3.9",
     install_requires=requires,
     extras_require={
         "data_process": ["pandas>=1.1.0"],

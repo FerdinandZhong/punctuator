@@ -277,9 +277,9 @@ class PretrainingPipeline:
                     torch.flatten((span_mask_arr).nonzero()).tolist()
                 ]
 
-                masked_input_ids_all[
-                    index, span_selection_index
-                ] = self.tokenizer.mask_token_id
+                masked_input_ids_all[index, span_selection_index] = (
+                    self.tokenizer.mask_token_id
+                )
                 index += 1
                 pbar.update(1)
         return masked_input_ids_all
@@ -304,9 +304,9 @@ class PretrainingPipeline:
                     torch.flatten((mask_arr).nonzero()).tolist()
                 ]
 
-                masked_input_ids_all[
-                    index, selection_index
-                ] = self.tokenizer.mask_token_id
+                masked_input_ids_all[index, selection_index] = (
+                    self.tokenizer.mask_token_id
+                )
                 index += 1
                 pbar.update(1)
         return masked_input_ids_all
@@ -423,9 +423,9 @@ class PretrainingPipeline:
         return {
             "epoch_loss": epoch_loss / in_epoch_steps,
             "epoch_span_acc": epoch_span_acc / in_epoch_steps,
-            "epoch_token_acc": 0
-            if self.arguments.span_only
-            else epoch_token_acc / in_epoch_steps,
+            "epoch_token_acc": (
+                0 if self.arguments.span_only else epoch_token_acc / in_epoch_steps
+            ),
         }
 
     def _epoch_time(self, start_time, end_time):
@@ -469,7 +469,7 @@ class PretrainingPipeline:
             num_warmup_steps=self.arguments.warm_up_steps,
         )
 
-        best_valid_loss = float('inf')
+        best_valid_loss = float("inf")
         no_improvement_count = 0
         self.total_steps = 0
 

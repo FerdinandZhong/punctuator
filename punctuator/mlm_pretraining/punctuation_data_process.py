@@ -71,9 +71,7 @@ def _read_data(
 
 
 # TODO: update docstring
-def process_data(
-    source_data, target_length, is_return_list=True
-):
+def process_data(source_data, target_length, is_return_list=True):
     """
     Function for generation of tokenized corpus and relevant tags
 

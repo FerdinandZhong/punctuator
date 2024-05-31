@@ -14,9 +14,7 @@ logger = logging.getLogger(__name__)
 SENTENCE_ENDINGS = ["PERIOD", "QUESTION"]
 
 
-def _read_data(
-    source_data, target_sequence_length, is_return_list
-) -> Union[List[List], List[str]]:
+def _read_data(source_data, target_sequence_length) -> Union[List[List], List[str]]:
     def read_line(text_line):
         return text_line.strip().split("\t")
 
@@ -55,10 +53,7 @@ def _read_data(
             try:
                 _verify_senquence(token_doc, target_sequence_length)
                 _verify_senquence(tag_doc, target_sequence_length)
-                if is_return_list:
-                    token_docs.append(token_doc)
-                else:
-                    token_docs.append("".join(token_doc))
+                token_docs.append(token_doc)
                 tag_docs.append(tag_doc)
                 token_doc = []
                 tag_doc = []
@@ -69,11 +64,8 @@ def _read_data(
                 continue
             pbar.update(len(token_doc))
     try:
-        assert (len(token_doc)==len(tag_doc)), "Not equal length"
-        if is_return_list:
-            token_docs.append(token_doc)
-        else:
-            token_docs.append("".join(token_doc))
+        assert len(token_doc) == len(tag_doc), "Not equal length"
+        token_docs.append(token_doc)
         tag_docs.append(tag_doc)
         pbar.update(len(token_doc))
     except AssertionError:
@@ -85,9 +77,7 @@ def _read_data(
 
 
 def _verify_senquence(sequence, target_sequence_length):
-    assert (
-        target_sequence_length <= len(sequence)
-    ), "wrong sequence length"
+    assert target_sequence_length <= len(sequence), "wrong sequence length"
 
 
 def generate_punctuator_tag_mappings(tag_docs):
@@ -110,9 +100,7 @@ def unison_shuffled_copies(a, b):
     return a[p].tolist(), b[p].tolist()
 
 
-def process_data(
-    source_data, target_sequence_length, is_return_list=True
-):
+def process_data(source_data, target_sequence_length):
     """
     Function for generation of tokenized corpus and relevant tags
 
@@ -124,7 +112,6 @@ def process_data(
     texts, tags = _read_data(
         source_data,
         target_sequence_length,
-        is_return_list=is_return_list,
     )
     return texts, tags
 
@@ -168,8 +155,8 @@ class EncodingDataset(Dataset):
         self.labels = labels
 
     def __getitem__(self, idx):
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        item["labels"] = torch.tensor(self.labels[idx])
+        item = {key: torch.Tensor(val[idx]) for key, val in self.encodings.items()}
+        item["labels"] = torch.Tensor(self.labels[idx])
         return item
 
     def __len__(self):

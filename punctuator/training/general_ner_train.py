@@ -73,6 +73,7 @@ class NERTrainingArguments(BaseModel):
     model_weight_name: str
     tokenizer_name: str
     model: Optional[Models] = Models.DISTILBERT
+    load_backbone_only: bool = False
 
     # training ars
     epoch: int
@@ -120,10 +121,17 @@ class NERTrainingPipeline:
             training_arguments.tokenizer_name,
             **training_arguments.additional_tokenizer_config,
         )
-        self.classifier = model_collection.model.from_pretrained(
-            training_arguments.model_weight_name,
-            config=self.model_config,
-        )
+        if training_arguments.load_backbone_only:
+            backbone_model = model_collection.backbone_model.from_pretrained(
+                training_arguments.model_weight_name,
+                config=self.model_config,
+            )
+            self.classifier = model_collection.model(self.model_config, backbone_model=backbone_model)
+        else:
+            self.classifier = model_collection.model.from_pretrained(
+                training_arguments.model_weight_name,
+                config=self.model_config,
+            )
 
         if torch.cuda.is_available() and training_arguments.use_gpu:
             if torch.cuda.device_count() > 1:
@@ -141,6 +149,12 @@ class NERTrainingPipeline:
             self.is_parallel = False
 
     def tokenize(self):
+        """
+        Tokenizes the training and validation corpora using the specified tokenizer.
+
+        This method prepares the text data for further processing by converting it into a format that the model can understand.
+        It also handles splitting the text into words where necessary and ensures that the resulting tokens are padded appropriately.
+        """  # noqa E501
         logger.info("tokenize data")
 
         self.train_encodings = self.tokenizer(
@@ -181,10 +195,14 @@ class NERTrainingPipeline:
         self.class_weights = torch.tensor(weights, dtype=torch.float)
 
         self.train_encoded_tags = self._encode_tags(
-            self.arguments.training_tags, self.train_encodings, self.arguments.training_corpus
+            self.arguments.training_tags,
+            self.train_encodings,
+            self.arguments.training_corpus,
         )
         self.validation_encoded_tags = self._encode_tags(
-            self.arguments.validation_tags, self.val_encodings, self.arguments.validation_corpus,
+            self.arguments.validation_tags,
+            self.val_encodings,
+            self.arguments.validation_corpus,
         )
 
         return self
@@ -392,7 +410,6 @@ class NERTrainingPipeline:
                 labels = batch["labels"].to(self.device)
 
                 if self.arguments.r_drop:
-
                     outputs_1 = self.classifier(
                         input_ids, attention_mask=attention_mask, labels=labels
                     )
@@ -413,6 +430,7 @@ class NERTrainingPipeline:
                         input_ids, attention_mask=attention_mask, labels=labels
                     )
                     logits_2 = outputs_2.logits
+
                     logits_2 = logits_2.view(-1, logits_2.size(-1))
                     loss_2 = F.cross_entropy(
                         logits_2,
@@ -434,13 +452,7 @@ class NERTrainingPipeline:
                         input_ids, attention_mask=attention_mask, labels=labels
                     )
                     logits = outputs.logits
-                    logits = logits.view(-1, logits.size(-1))
-                    loss = F.cross_entropy(
-                        logits,
-                        labels.view(-1),
-                        # weight=self.class_weights.to(self.device),
-                        reduction="mean",
-                    )
+                    loss = outputs.loss
 
                 if self.is_parallel:
                     loss = loss.mean()

@@ -44,7 +44,7 @@ training_args = NERTrainingArguments(
     tensorboard_log_dir="runs/iwslt_roberta_finetune",
     label2id=label2id,
     early_stop_count=5,
-    additional_tokenizer_config={"add_prefix_space": True}
+    additional_tokenizer_config={"add_prefix_space": True},
 )
 
 training_pipeline = NERTrainingPipeline(training_args)
