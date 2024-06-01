@@ -37,6 +37,6 @@ class Models(Enum):
     BERT_KAN = ModelCollection(
         BertConfig,
         BertTokenizerFast,
-        BertModel, 
-        BertKanForTokenClassification
+        BertKanForTokenClassification,
+        BertModel
     )
