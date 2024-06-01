@@ -22,7 +22,7 @@ class BertKanForTokenClassification(BertPreTrainedModel):
             else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
-        self.classifier = KAN([config.hidden_size, 128, 32, config.num_labels])
+        self.classifier = KAN([config.hidden_size, config.hidden_size//2, config.hidden_size//4, config.hidden_size//8, config.num_labels])
         # Initialize weights and apply final processing
         # self.post_init()
 
@@ -63,7 +63,7 @@ class BertKanForTokenClassification(BertPreTrainedModel):
         sequence_output = outputs[0]
 
         sequence_output = self.dropout(sequence_output)
-        logits = self.classifier(sequence_output)
+        logits = self.classifier(sequence_output, update_grid=True)
 
         loss = None
         if labels is not None:
