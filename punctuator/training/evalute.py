@@ -98,7 +98,7 @@ class EvaluationPipeline:
                 steps += 1
                 pbar.set_description(f"Processing batch: {steps}")
 
-                input_ids = batch["input_ids"].to(self.device)
+                input_ids = batch["input_ids"].to(self.device).long()
                 attention_mask = batch["attention_mask"].to(self.device)
                 labels = batch["labels"].to(self.device)
                 outputs = self.classifier(
