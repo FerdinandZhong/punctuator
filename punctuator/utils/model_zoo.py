@@ -18,7 +18,7 @@ from transformers import (
     RobertaTokenizerFast,
 )
 
-ModelCollection = namedtuple("ModelCollection", ["config", "tokenizer", "model", "model_backbone"])
+ModelCollection = namedtuple("ModelCollection", ["config", "tokenizer", "model", "backbone_model"])
 
 
 class Models(Enum):
