@@ -184,7 +184,7 @@ class NERTrainingPipeline:
             weight if weight > 0 else DEFAULT_LABEL_WEIGHT
             for weight in np.log(
                 class_weight.compute_class_weight(
-                    "balanced", classes=list(unique_tag_ids), y=all_ner_tag_ids
+                    "balanced", classes=np.array(list(unique_tag_ids)), y=all_ner_tag_ids
                 )
             )
         ]
