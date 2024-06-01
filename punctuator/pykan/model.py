@@ -11,11 +11,14 @@ from .kan import KAN
 
 
 class BertKanForTokenClassification(BertPreTrainedModel):
-    def __init__(self, config, backbone_model: BertModel):
+    def __init__(self, config, backbone_model: BertModel = None):
         super().__init__(config)
         self.num_labels = config.num_labels
 
-        self.bert = backbone_model
+        if backbone_model is not None:
+            self.bert = backbone_model
+        else:
+            backbone_model = BertModel(config, add_pooling_layer=False)
         classifier_dropout = (
             config.classifier_dropout
             if config.classifier_dropout is not None
@@ -24,7 +27,7 @@ class BertKanForTokenClassification(BertPreTrainedModel):
         self.dropout = nn.Dropout(classifier_dropout)
         self.classifier = KAN([config.hidden_size, config.hidden_size//2, config.hidden_size//4, config.hidden_size//8, config.num_labels])
         # Initialize weights and apply final processing
-        # self.post_init()
+        self.post_init()
 
     # TODO: add r-drop
     def forward(
