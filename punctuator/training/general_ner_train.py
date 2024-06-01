@@ -85,7 +85,7 @@ class NERTrainingArguments(BaseModel):
     gpu_device: Optional[int] = os.environ.get("CUDA_VISIBLE_DEVICES", 0)
     warm_up_steps: int = 1000
     r_drop: bool = False
-    r_alpha: int = 0
+    r_alpha: float = 0
     plot_steps: int = 50
     tensorboard_log_dir: Optional[str] = "runs"
     intermediate_persist_step: int = 5
