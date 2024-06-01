@@ -63,7 +63,11 @@ class BertKanForTokenClassification(BertPreTrainedModel):
         sequence_output = outputs[0]
 
         sequence_output = self.dropout(sequence_output)
-        logits = self.classifier(sequence_output, update_grid=True)
+        batch_size, sequence_length, hidden_size = sequence_output.shape
+
+        kan_input = sequence_output.reshape(batch_size*sequence_length, hidden_size)
+        kan_output = self.classifier(kan_input, update_grid=True)
+        logits = kan_output.view(batch_size, sequence_length, self.num_labels)
 
         loss = None
         if labels is not None:
