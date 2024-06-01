@@ -42,6 +42,7 @@ training_args = NERTrainingArguments(
     training_tags=training_tags,
     validation_tags=validation_tags,
     model=Models.BERT_KAN,
+    load_backbone_only=True,
     model_weight_name="bert-base-uncased",
     tokenizer_name="bert-base-uncased",
     epoch=40,
