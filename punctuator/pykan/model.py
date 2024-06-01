@@ -18,7 +18,7 @@ class BertKanForTokenClassification(BertPreTrainedModel):
         if backbone_model is not None:
             self.bert = backbone_model
         else:
-            backbone_model = BertModel(config, add_pooling_layer=False)
+            self.bert = BertModel(config, add_pooling_layer=False)
         classifier_dropout = (
             config.classifier_dropout
             if config.classifier_dropout is not None

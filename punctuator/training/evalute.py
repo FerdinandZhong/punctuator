@@ -87,7 +87,8 @@ class EvaluationPipeline:
         val_loader = DataLoader(
             self.dataset, batch_size=self.arguments.batch_size, shuffle=True
         )
-        self.classifier.train(False)
+        # self.classifier.train(False)
+        self.classifier.eval()
 
         steps = 0
         total_preds = []
