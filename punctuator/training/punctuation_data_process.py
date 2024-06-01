@@ -156,7 +156,11 @@ class EncodingDataset(Dataset):
 
     def __getitem__(self, idx):
         item = {key: torch.Tensor(val[idx]) for key, val in self.encodings.items()}
-        item["labels"] = torch.Tensor(self.labels[idx])
+        item["labels"] = (
+            self.labels[idx]
+            if torch.is_tensor(self.labels[idx])
+            else torch.tensor(self.labels[idx]).type(torch.LongTensor)
+        )
         return item
 
     def __len__(self):
