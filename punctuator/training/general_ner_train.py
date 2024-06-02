@@ -119,7 +119,7 @@ class NERTrainingPipeline:
             num_labels=self.num_labels,
             **training_arguments.addtional_model_config,
         )
-        
+
         self.tokenizer = model_collection.tokenizer.from_pretrained(
             training_arguments.tokenizer_name,
             **training_arguments.additional_tokenizer_config,
@@ -129,7 +129,9 @@ class NERTrainingPipeline:
                 training_arguments.model_weight_name,
                 config=self.model_config,
             )
-            self.classifier = model_collection.model(self.model_config, backbone_model=backbone_model)
+            self.classifier = model_collection.model(
+                self.model_config, backbone_model=backbone_model
+            )
         else:
             self.classifier = model_collection.model.from_pretrained(
                 training_arguments.model_weight_name,
@@ -188,14 +190,18 @@ class NERTrainingPipeline:
                 weight if weight > 0 else DEFAULT_LABEL_WEIGHT
                 for weight in np.log(
                     class_weight.compute_class_weight(
-                        "balanced", classes=np.array(list(unique_tag_ids)), y=all_ner_tag_ids
+                        "balanced",
+                        classes=np.array(list(unique_tag_ids)),
+                        y=all_ner_tag_ids,
                     )
                 )
             ]
             logger.info(
                 f"class weights: {[round(weight, 2) for weight in weights]}, id2label: {self.id2label}"
             )
-            self.class_weights = torch.tensor(weights, dtype=torch.float).to(self.device)
+            self.class_weights = torch.tensor(weights, dtype=torch.float).to(
+                self.device
+            )
         else:
             self.class_weights = None
 

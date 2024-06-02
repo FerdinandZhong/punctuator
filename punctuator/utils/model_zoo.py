@@ -1,6 +1,5 @@
 from collections import namedtuple
 from enum import Enum
-from punctuator.pykan.model import BertKanForTokenClassification
 
 from transformers import (
     AutoConfig,
@@ -18,25 +17,43 @@ from transformers import (
     RobertaTokenizerFast,
 )
 
-ModelCollection = namedtuple("ModelCollection", ["config", "tokenizer", "model", "backbone_model"])
+from punctuator.pykan.model import BertKanForTokenClassification, BertKanForTokenClassification2
+
+ModelCollection = namedtuple(
+    "ModelCollection", ["config", "tokenizer", "model", "backbone_model"]
+)
 
 
 class Models(Enum):
     DISTILBERT = ModelCollection(
-        DistilBertConfig, DistilBertTokenizerFast, DistilBertForTokenClassification, DistilBertForTokenClassification
+        DistilBertConfig,
+        DistilBertTokenizerFast,
+        DistilBertForTokenClassification,
+        DistilBertForTokenClassification,
     )
     BERT_TOKEN_CLASSIFICATION = ModelCollection(
-        BertConfig, BertTokenizerFast, BertForTokenClassification, BertForTokenClassification
-    )
-    BERT = ModelCollection(BertConfig, BertTokenizerFast, BertModel, BertModel)
-    BERT_PRETRAINING = ModelCollection(AutoConfig, BertTokenizerFast, AutoModel, AutoModel)
-    ROBERTA = ModelCollection(RobertaConfig, RobertaTokenizerFast, RobertaModel, RobertaModel)
-    ROBERTA_TOKEN_CLASSIFICATION = ModelCollection(
-        RobertaConfig, RobertaTokenizerFast, RobertaForTokenClassification, RobertaForTokenClassification
-    )
-    BERT_KAN = ModelCollection(
         BertConfig,
         BertTokenizerFast,
-        BertKanForTokenClassification,
-        BertModel
+        BertForTokenClassification,
+        BertForTokenClassification,
+    )
+    BERT = ModelCollection(BertConfig, BertTokenizerFast, BertModel, BertModel)
+    BERT_PRETRAINING = ModelCollection(
+        AutoConfig, BertTokenizerFast, AutoModel, AutoModel
+    )
+    ROBERTA = ModelCollection(
+        RobertaConfig, RobertaTokenizerFast, RobertaModel, RobertaModel
+    )
+    ROBERTA_TOKEN_CLASSIFICATION = ModelCollection(
+        RobertaConfig,
+        RobertaTokenizerFast,
+        RobertaForTokenClassification,
+        RobertaForTokenClassification,
+    )
+    BERT_KAN = ModelCollection(
+        BertConfig, BertTokenizerFast, BertKanForTokenClassification, BertModel
+    )
+
+    BERT_KAN_2 = ModelCollection(
+        BertConfig, BertTokenizerFast, BertKanForTokenClassification2, BertModel
     )

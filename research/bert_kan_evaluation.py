@@ -5,7 +5,9 @@ from punctuator.utils import Models
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "--model_storage_dir", help="The storage directory of the finetuned model", default="models/"
+    "--model_storage_dir",
+    help="The storage directory of the finetuned model",
+    default="models/",
 )
 args = parser.parse_args()
 

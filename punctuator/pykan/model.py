@@ -4,8 +4,8 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn import CrossEntropyLoss
-from transformers import BertModel, BertPreTrainedModel
 from transformers.modeling_outputs import TokenClassifierOutput
+from transformers.models.bert.modeling_bert import *
 
 from .kan import KAN
 
@@ -25,7 +25,15 @@ class BertKanForTokenClassification(BertPreTrainedModel):
             else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
-        self.classifier = KAN([config.hidden_size, config.hidden_size//2, config.hidden_size//4, config.hidden_size//8, config.num_labels])
+        self.classifier = KAN(
+            [
+                config.hidden_size,
+                config.hidden_size // 2,
+                config.hidden_size // 4,
+                config.hidden_size // 8,
+                config.num_labels,
+            ]
+        )
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -68,7 +76,7 @@ class BertKanForTokenClassification(BertPreTrainedModel):
         sequence_output = self.dropout(sequence_output)
         batch_size, sequence_length, hidden_size = sequence_output.shape
 
-        kan_input = sequence_output.reshape(batch_size*sequence_length, hidden_size)
+        kan_input = sequence_output.reshape(batch_size * sequence_length, hidden_size)
         kan_output = self.classifier(kan_input, update_grid=True)
         logits = kan_output.view(batch_size, sequence_length, self.num_labels)
 
@@ -87,3 +95,133 @@ class BertKanForTokenClassification(BertPreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+
+
+class BertKanIntermediate(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.dense = KAN([config.hidden_size, config.intermediate_size])
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        batch_size, sequence_length, hidden_size = hidden_states.shape
+        kan_input = hidden_states.reshape(batch_size * sequence_length, hidden_size)
+        kan_output = self.dense(kan_input, update_grid=True)
+
+        return kan_output.view(batch_size, sequence_length, hidden_size)
+
+
+class BertKanOutput(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.dense = KAN([config.intermediate_size, config.hidden_size])
+        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+
+    def forward(
+        self, hidden_states: torch.Tensor, input_tensor: torch.Tensor
+    ) -> torch.Tensor:
+        batch_size, sequence_length, hidden_size = hidden_states.shape
+        kan_input = hidden_states.reshape(batch_size * sequence_length, hidden_size)
+        hidden_states = self.dense(kan_input, update_grid=True).view(
+            batch_size, sequence_length, hidden_size
+        )
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.LayerNorm(hidden_states + input_tensor)
+        return hidden_states
+
+
+class BertKanLayer(BertLayer):
+    """Bert with Kan layer. Attention still follows the original architecture.
+
+    But replace every encoder layer's output MLPs with KANs
+    """
+    def __init__(self, config, bert_layer: BertLayer = None):
+        super().__init__(config)
+        self.chunk_size_feed_forward = config.chunk_size_feed_forward
+        self.seq_len_dim = 1
+        self.is_decoder = config.is_decoder
+        self.add_cross_attention = config.add_cross_attention
+        if self.add_cross_attention:
+            if not self.is_decoder:
+                raise ValueError(
+                    f"{self} should be used as a decoder model if cross attention is added"
+                )
+        if bert_layer is None:
+            self.attention = BertAttention(config)
+            if self.add_cross_attention:
+                self.crossattention = BertAttention(
+                    config, position_embedding_type="absolute"
+                )
+        else:
+            self.attention = bert_layer.attention
+            if self.add_cross_attention:
+                self.crossattention = bert_layer.crossattention
+        self.intermediate = BertKanIntermediate(config)
+        self.output = BertKanOutput(config)
+
+
+class BertKanEncoder(BertEncoder):
+    def __init__(self, config, layer_list: nn.ModuleList = None):
+        super().__init__(config)
+        self.config = config
+        if layer_list is None:
+            self.layer = nn.ModuleList(
+                [BertKanLayer(config) for _ in range(config.num_hidden_layers)]
+            )
+        else:
+            self.layer = nn.ModuleList(
+                [BertKanLayer(config, bert_layer) for bert_layer in layer_list]
+            )
+        self.gradient_checkpointing = False
+
+
+class BertKanModel(BertModel):
+    def __init__(
+        self, config, add_pooling_layer=True, backbone_model: BertModel = None
+    ):
+        super().__init__(config)
+
+        if backbone_model is not None:
+            self.embeddings = backbone_model.embeddings
+            self.encoder = BertKanEncoder(config, backbone_model.encoder.layer)
+            self.pooler = backbone_model.pooler
+        else:
+            self.embeddings = BertEmbeddings(config)
+            self.encoder = BertKanEncoder(config)
+
+            self.pooler = BertPooler(config) if add_pooling_layer else None
+
+        self.attn_implementation = config._attn_implementation
+        self.position_embedding_type = config.position_embedding_type
+
+        self.post_init()
+
+
+class BertKanForTokenClassification2(BertPreTrainedModel):
+    def __init__(self, config, backbone_model: BertModel = None):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+
+        if backbone_model is not None:
+            self.bert = BertKanModel(
+                config, add_pooling_layer=False, backbone_model=backbone_model
+            )
+        else:
+            self.bert = BertKanModel(config, add_pooling_layer=False)
+        classifier_dropout = (
+            config.classifier_dropout
+            if config.classifier_dropout is not None
+            else config.hidden_dropout_prob
+        )
+        self.dropout = nn.Dropout(classifier_dropout)
+        self.classifier = KAN(
+            [
+                config.hidden_size,
+                config.hidden_size // 2,
+                config.hidden_size // 4,
+                config.hidden_size // 8,
+                config.num_labels,
+            ]
+        )
+        # Initialize weights and apply final processing
+        self.post_init()
