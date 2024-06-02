@@ -89,6 +89,7 @@ class NERTrainingArguments(BaseModel):
     plot_steps: int = 50
     tensorboard_log_dir: Optional[str] = "runs"
     intermediate_persist_step: int = 5
+    use_class_weight: bool = False
 
     # model args
     addtional_model_config: Optional[Dict]
@@ -110,13 +111,15 @@ class NERTrainingPipeline:
 
         model_collection = training_arguments.model.value
 
+        self.num_labels = len(self.id2label)
         self.model_config = model_collection.config.from_pretrained(
             training_arguments.model_weight_name,
             label2id=self.label2id,
             id2label=self.id2label,
-            num_labels=len(self.id2label),
+            num_labels=self.num_labels,
             **training_arguments.addtional_model_config,
         )
+        
         self.tokenizer = model_collection.tokenizer.from_pretrained(
             training_arguments.tokenizer_name,
             **training_arguments.additional_tokenizer_config,
@@ -180,19 +183,21 @@ class NERTrainingPipeline:
 
         logger.info(f"unique tag ids: {unique_tag_ids}, id2label: {self.id2label}")
 
-        weights = [
-            weight if weight > 0 else DEFAULT_LABEL_WEIGHT
-            for weight in np.log(
-                class_weight.compute_class_weight(
-                    "balanced", classes=np.array(list(unique_tag_ids)), y=all_ner_tag_ids
+        if self.arguments.use_class_weight:
+            weights = [
+                weight if weight > 0 else DEFAULT_LABEL_WEIGHT
+                for weight in np.log(
+                    class_weight.compute_class_weight(
+                        "balanced", classes=np.array(list(unique_tag_ids)), y=all_ner_tag_ids
+                    )
                 )
+            ]
+            logger.info(
+                f"class weights: {[round(weight, 2) for weight in weights]}, id2label: {self.id2label}"
             )
-        ]
-        logger.info(
-            f"class weights: {[round(weight, 2) for weight in weights]}, id2label: {self.id2label}"
-        )
-
-        self.class_weights = torch.tensor(weights, dtype=torch.float)
+            self.class_weights = torch.tensor(weights, dtype=torch.float).to(self.device)
+        else:
+            self.class_weights = None
 
         self.train_encoded_tags = self._encode_tags(
             self.arguments.training_tags,
@@ -416,13 +421,13 @@ class NERTrainingPipeline:
                     logits_1 = outputs_1.logits
                     if in_epoch_steps == 1:
                         logger.info(f"logits shape {logits_1.size()}")
-                    logits_1 = logits_1.view(-1, logits_1.size(-1))
+                    logits_1_viewed = logits_1.view(-1, self.num_labels)
                     if in_epoch_steps == 1:
-                        logger.info(f"viewed logits shape {logits_1.size()}")
+                        logger.info(f"viewed logits shape {logits_1_viewed.size()}")
                     loss_1 = F.cross_entropy(
-                        logits_1,
+                        logits_1_viewed,
                         labels.view(-1),
-                        weight=self.class_weights.to(self.device),
+                        weight=self.class_weights,
                         reduction="mean",
                     )
 
@@ -431,11 +436,11 @@ class NERTrainingPipeline:
                     )
                     logits_2 = outputs_2.logits
 
-                    logits_2 = logits_2.view(-1, logits_2.size(-1))
+                    logits_2_viewed = logits_2.view(-1, self.num_labels)
                     loss_2 = F.cross_entropy(
-                        logits_2,
+                        logits_2_viewed,
                         labels.view(-1),
-                        weight=self.class_weights.to(self.device),
+                        weight=self.class_weights,
                         reduction="mean",
                     )
 
