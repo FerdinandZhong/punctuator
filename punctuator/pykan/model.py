@@ -197,7 +197,7 @@ class BertKanModel(BertModel):
         self.post_init()
 
 
-class BertKanForTokenClassification2(BertPreTrainedModel):
+class BertKanForTokenClassification2(BertKanForTokenClassification):
     def __init__(self, config, backbone_model: BertModel = None):
         super().__init__(config)
         self.num_labels = config.num_labels
