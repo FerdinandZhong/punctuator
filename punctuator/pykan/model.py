@@ -100,19 +100,21 @@ class BertKanForTokenClassification(BertPreTrainedModel):
 class BertKanIntermediate(nn.Module):
     def __init__(self, config):
         super().__init__()
+        self.intermediate_size = config.intermediate_size
         self.dense = KAN([config.hidden_size, config.intermediate_size])
 
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        batch_size, sequence_length, hidden_size = hidden_states.shape
-        kan_input = hidden_states.reshape(batch_size * sequence_length, hidden_size)
+        batch_size, sequence_length, input_size = hidden_states.shape
+        kan_input = hidden_states.reshape(batch_size * sequence_length, input_size)
         kan_output = self.dense(kan_input, update_grid=True)
 
-        return kan_output.view(batch_size, sequence_length, hidden_size)
+        return kan_output.view(batch_size, sequence_length, self.intermediate_size)
 
 
 class BertKanOutput(nn.Module):
     def __init__(self, config):
         super().__init__()
+        self.hidden_size = config.hidden_size
         self.dense = KAN([config.intermediate_size, config.hidden_size])
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
@@ -120,10 +122,10 @@ class BertKanOutput(nn.Module):
     def forward(
         self, hidden_states: torch.Tensor, input_tensor: torch.Tensor
     ) -> torch.Tensor:
-        batch_size, sequence_length, hidden_size = hidden_states.shape
-        kan_input = hidden_states.reshape(batch_size * sequence_length, hidden_size)
+        batch_size, sequence_length, input_size = hidden_states.shape
+        kan_input = hidden_states.reshape(batch_size * sequence_length, input_size)
         hidden_states = self.dense(kan_input, update_grid=True).view(
-            batch_size, sequence_length, hidden_size
+            batch_size, sequence_length, self.hidden_size
         )
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.LayerNorm(hidden_states + input_tensor)
