@@ -154,11 +154,12 @@ class BertKanLayer(BertLayer):
                 self.crossattention = BertAttention(
                     config, position_embedding_type="absolute"
                 )
+            self.intermediate = BertIntermediate(config)
         else:
             self.attention = bert_layer.attention
             if self.add_cross_attention:
                 self.crossattention = bert_layer.crossattention
-        self.intermediate = BertKanIntermediate(config)
+            self.intermediate = bert_layer.intermediate
         self.output = BertKanOutput(config)
 
 
