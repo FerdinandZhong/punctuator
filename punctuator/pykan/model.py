@@ -106,7 +106,7 @@ class BertKanIntermediate(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         batch_size, sequence_length, input_size = hidden_states.shape
         kan_input = hidden_states.reshape(batch_size * sequence_length, input_size)
-        kan_output = self.dense(kan_input, update_grid=True)
+        kan_output = self.dense(kan_input, update_grid=False)
 
         return kan_output.view(batch_size, sequence_length, self.intermediate_size)
 
@@ -124,7 +124,7 @@ class BertKanOutput(nn.Module):
     ) -> torch.Tensor:
         batch_size, sequence_length, input_size = hidden_states.shape
         kan_input = hidden_states.reshape(batch_size * sequence_length, input_size)
-        hidden_states = self.dense(kan_input, update_grid=True).view(
+        hidden_states = self.dense(kan_input, update_grid=False).view(
             batch_size, sequence_length, self.hidden_size
         )
         hidden_states = self.dropout(hidden_states)
