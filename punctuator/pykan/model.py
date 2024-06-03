@@ -132,6 +132,27 @@ class BertKanOutput(nn.Module):
         return hidden_states
 
 
+class BertLayerKan(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.hidden_size = config.hidden_size
+        self.kan = KAN([config.hidden_size, config.intermediate_size//2, config.hidden_size], grid_size=3)
+        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
+        self.dropout = nn.Dropout(config.hidden_dropout_prob)
+    
+    def forward(
+        self, hidden_states: torch.Tensor, input_tensor: torch.Tensor
+    ) -> torch.Tensor:
+        batch_size, sequence_length, input_size = hidden_states.shape
+        kan_input = hidden_states.reshape(batch_size * sequence_length, input_size)
+        kan_output = self.kan(kan_input, update_grid=True).view(
+            batch_size, sequence_length, self.hidden_size
+        )
+        kan_output = self.dropout(kan_output)
+        return self.LayerNorm(kan_output + input_tensor)
+    
+
+
 class BertKanLayer(BertLayer):
     """Bert with Kan layer. Attention still follows the original architecture.
 
@@ -154,13 +175,16 @@ class BertKanLayer(BertLayer):
                 self.crossattention = BertAttention(
                     config, position_embedding_type="absolute"
                 )
-            self.intermediate = BertIntermediate(config)
         else:
             self.attention = bert_layer.attention
             if self.add_cross_attention:
                 self.crossattention = bert_layer.crossattention
-            self.intermediate = bert_layer.intermediate
-        self.output = BertKanOutput(config)
+        self.output = BertLayerKan(config)
+    
+    def feed_forward_chunk(self, attention_output):
+        layer_output = self.output(attention_output, attention_output)
+        return layer_output
+
 
 
 class BertKanEncoder(BertEncoder):
