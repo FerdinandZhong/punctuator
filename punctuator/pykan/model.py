@@ -109,7 +109,7 @@ class BertLayerKan(nn.Module):
     ) -> torch.Tensor:
         batch_size, sequence_length, input_size = hidden_states.shape
         kan_input = hidden_states.reshape(batch_size * sequence_length, input_size)
-        kan_output = self.kan(kan_input, update_grid=True).view(
+        kan_output = self.kan(kan_input).view(
             batch_size, sequence_length, self.hidden_size
         )
         kan_output = self.dropout(kan_output)
