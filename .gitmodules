@@ -1,0 +1,3 @@
+[submodule "fast-kan"]
+	path = fast-kan
+	url = https://github.com/ZiyaoLi/fast-kan.git
