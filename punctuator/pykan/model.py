@@ -7,7 +7,7 @@ from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import TokenClassifierOutput
 from transformers.models.bert.modeling_bert import *
 
-from .kan import KAN
+from fastkan import FastKAN as KAN
 
 
 class BertKanForTokenClassification(BertPreTrainedModel):
@@ -29,7 +29,6 @@ class BertKanForTokenClassification(BertPreTrainedModel):
             [
                 config.hidden_size,
                 config.hidden_size // 2,
-                config.hidden_size // 4,
                 config.hidden_size // 8,
                 config.num_labels,
             ]
@@ -77,7 +76,7 @@ class BertKanForTokenClassification(BertPreTrainedModel):
         batch_size, sequence_length, hidden_size = sequence_output.shape
 
         kan_input = sequence_output.reshape(batch_size * sequence_length, hidden_size)
-        kan_output = self.classifier(kan_input, update_grid=True)
+        kan_output = self.classifier(kan_input)
         logits = kan_output.view(batch_size, sequence_length, self.num_labels)
 
         loss = None
@@ -97,46 +96,11 @@ class BertKanForTokenClassification(BertPreTrainedModel):
         )
 
 
-class BertKanIntermediate(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.intermediate_size = config.intermediate_size
-        self.dense = KAN([config.hidden_size, config.intermediate_size])
-
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        batch_size, sequence_length, input_size = hidden_states.shape
-        kan_input = hidden_states.reshape(batch_size * sequence_length, input_size)
-        kan_output = self.dense(kan_input, update_grid=False)
-
-        return kan_output.view(batch_size, sequence_length, self.intermediate_size)
-
-
-class BertKanOutput(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.hidden_size = config.hidden_size
-        self.dense = KAN([config.intermediate_size, config.hidden_size])
-        self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
-
-    def forward(
-        self, hidden_states: torch.Tensor, input_tensor: torch.Tensor
-    ) -> torch.Tensor:
-        batch_size, sequence_length, input_size = hidden_states.shape
-        kan_input = hidden_states.reshape(batch_size * sequence_length, input_size)
-        hidden_states = self.dense(kan_input, update_grid=False).view(
-            batch_size, sequence_length, self.hidden_size
-        )
-        hidden_states = self.dropout(hidden_states)
-        hidden_states = self.LayerNorm(hidden_states + input_tensor)
-        return hidden_states
-
-
 class BertLayerKan(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.kan = KAN([config.hidden_size, config.intermediate_size//2, config.hidden_size], grid_size=3)
+        self.kan = KAN([config.hidden_size, config.hidden_size//2, config.hidden_size])
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
     
@@ -252,3 +216,63 @@ class BertKanForTokenClassification2(BertKanForTokenClassification):
         )
         # Initialize weights and apply final processing
         self.post_init()
+
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        token_type_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        class_weights: Optional[torch.Tensor] = None
+    ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the token classification loss. Indices should be in `[0, ..., config.num_labels - 1]`.
+        """
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
+
+        outputs = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        sequence_output = outputs[0]
+
+        sequence_output = self.dropout(sequence_output)
+        batch_size, sequence_length, hidden_size = sequence_output.shape
+
+        kan_input = sequence_output.reshape(batch_size * sequence_length, hidden_size)
+        kan_output = self.classifier(kan_input)
+        logits = kan_output.view(batch_size, sequence_length, self.num_labels)
+
+        loss = None
+        if labels is not None:
+            loss_fct = CrossEntropyLoss(weight=class_weights)
+            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+
+        if not return_dict:
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return TokenClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )

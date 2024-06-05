@@ -17,7 +17,7 @@ from transformers import AdamW, get_constant_schedule_with_warmup
 from punctuator.utils import NORMAL_TOKEN_TAG, Models
 
 logger = logging.getLogger(__name__)
-DEFAULT_LABEL_WEIGHT = 1
+DEFAULT_LABEL_WEIGHT = 0.5
 
 
 class EncodingDataset:
@@ -460,7 +460,7 @@ class NERTrainingPipeline:
 
                 else:
                     outputs = self.classifier(
-                        input_ids, attention_mask=attention_mask, labels=labels
+                        input_ids, attention_mask=attention_mask, labels=labels, class_weights=self.class_weights
                     )
                     logits = outputs.logits
                     loss = outputs.loss
