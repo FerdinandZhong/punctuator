@@ -202,6 +202,7 @@ class NERTrainingPipeline:
             self.class_weights = torch.tensor(weights, dtype=torch.float).to(
                 self.device
             )
+            logger.info(f"class weights tensor: {self.class_weights}")
         else:
             self.class_weights = None
 

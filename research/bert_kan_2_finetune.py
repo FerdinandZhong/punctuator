@@ -60,6 +60,7 @@ training_args = NERTrainingArguments(
     tensorboard_log_dir=args.tensorboard_log_dir,
     label2id=label2id,
     early_stop_count=5,
+    use_class_weight=True
 )
 
 training_pipeline = NERTrainingPipeline(training_args)
