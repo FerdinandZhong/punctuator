@@ -230,7 +230,7 @@ class BertKanForTokenClassification2(BertKanForTokenClassification):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        class_weights: Optional[torch.Tensor] = None
+        loss_fct: Optional[CrossEntropyLoss] = None
     ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -262,8 +262,9 @@ class BertKanForTokenClassification2(BertKanForTokenClassification):
         logits = kan_output.view(batch_size, sequence_length, self.num_labels)
 
         loss = None
+        if loss_fct is None:
+            loss_fct = CrossEntropyLoss()
         if labels is not None:
-            loss_fct = CrossEntropyLoss(weight=class_weights)
             loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
             
         if not return_dict:
