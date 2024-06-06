@@ -11,7 +11,6 @@ from sklearn.metrics import classification_report
 from sklearn.utils import class_weight
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from torch.nn import CrossEntropyLoss
 from tqdm import tqdm
 from transformers import AdamW, get_constant_schedule_with_warmup
 
@@ -196,7 +195,7 @@ class NERTrainingPipeline:
                         y=all_ner_tag_ids,
                     )
                 )
-            ]
+            ]*torch.cuda.device_count()
             logger.info(
                 f"class weights: {[round(weight, 2) for weight in weights]}, id2label: {self.id2label}"
             )
@@ -204,7 +203,6 @@ class NERTrainingPipeline:
                 self.device
             )
             logger.info(f"class weights tensor: {self.class_weights}")
-            self.loss_fct = CrossEntropyLoss(weight=self.class_weights)
         else:
             self.class_weights = None
 
@@ -463,7 +461,7 @@ class NERTrainingPipeline:
 
                 else:
                     outputs = self.classifier(
-                        input_ids, attention_mask=attention_mask, labels=labels, loss_fct=self.loss_fct
+                        input_ids, attention_mask=attention_mask, labels=labels, class_weights=self.class_weights
                     )
                     logits = outputs.logits
                     loss = outputs.loss
