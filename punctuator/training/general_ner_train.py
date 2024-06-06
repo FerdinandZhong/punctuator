@@ -17,7 +17,7 @@ from transformers import AdamW, get_constant_schedule_with_warmup
 from punctuator.utils import NORMAL_TOKEN_TAG, Models
 
 logger = logging.getLogger(__name__)
-DEFAULT_LABEL_WEIGHT = 0.5
+DEFAULT_LABEL_WEIGHT = 0.1
 
 
 class EncodingDataset:
