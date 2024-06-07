@@ -144,3 +144,4 @@ data/**
 
 notebooks/**
 
+.DS_Store

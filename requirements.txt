@@ -4,3 +4,4 @@ tqdm>=4.61.2
 transformers==4.41.2
 pydantic>=2.0
 plane>=0.2.0
+chardet==5.2.0

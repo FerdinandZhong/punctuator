@@ -49,11 +49,6 @@ def dataframe_data_cleaning(
         lambda x: replace(x, TELEPHONE, TELEPHONE_TOKEN)
     )
 
-    logger.info("replace number with <NUM>")
-    df[target_col] = df[target_col].progress_apply(
-        lambda x: replace(x, LONGNUMBER, NUMBER_TOKEN)
-    )
-
     translator = str.maketrans({key: None for key in removed_punctuations})
     space_translator = str.maketrans(
         {key: " {0} ".format(chr(key)) for key in kept_punctuations}
