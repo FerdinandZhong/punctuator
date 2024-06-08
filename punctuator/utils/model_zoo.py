@@ -17,7 +17,10 @@ from transformers import (
     RobertaTokenizerFast,
 )
 
-from punctuator.pykan.model import BertKanForTokenClassification, BertKanForTokenClassification2
+from punctuator.pykan.model import (
+    BertKanForTokenClassification,
+    BertKanForTokenClassification2,
+)
 
 ModelCollection = namedtuple(
     "ModelCollection", ["config", "tokenizer", "model", "backbone_model"]
