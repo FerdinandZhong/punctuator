@@ -195,7 +195,7 @@ class NERTrainingPipeline:
                         y=all_ner_tag_ids,
                     )
                 )
-            ]*torch.cuda.device_count()
+            ] * torch.cuda.device_count()
 
             logger.info(
                 f"class weights: {[round(weight, 2) for weight in weights]}, id2label: {self.id2label}"
@@ -462,7 +462,10 @@ class NERTrainingPipeline:
 
                 else:
                     outputs = self.classifier(
-                        input_ids, attention_mask=attention_mask, labels=labels, class_weights=self.class_weights
+                        input_ids,
+                        attention_mask=attention_mask,
+                        labels=labels,
+                        class_weights=self.class_weights,
                     )
                     logits = outputs.logits
                     loss = outputs.loss

@@ -2,12 +2,11 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
+from fastkan import FastKAN as KAN
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import TokenClassifierOutput
 from transformers.models.bert.modeling_bert import *
-
-from fastkan import FastKAN as KAN
 
 
 class BertKanForTokenClassification(BertPreTrainedModel):
@@ -100,21 +99,29 @@ class BertLayerKan(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.kan = KAN([config.hidden_size, config.hidden_size//2, config.hidden_size])
+        self.kan = KAN(
+            [
+                config.hidden_size,
+                config.hidden_size * 2,
+                # config.hidden_size // 4,
+                # config.hidden_size // 2,
+                config.hidden_size,
+            ]
+        )
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
-    
+
     def forward(
         self, hidden_states: torch.Tensor, input_tensor: torch.Tensor
     ) -> torch.Tensor:
-        batch_size, sequence_length, input_size = hidden_states.shape
-        kan_input = hidden_states.reshape(batch_size * sequence_length, input_size)
-        kan_output = self.kan(kan_input).view(
-            batch_size, sequence_length, self.hidden_size
-        )
+        # batch_size, sequence_length, input_size = hidden_states.shape
+        # kan_input = hidden_states.reshape(batch_size * sequence_length, input_size)
+        # kan_output = self.kan(kan_input).view(
+        #     batch_size, sequence_length, self.hidden_size
+        # )
+        kan_output = self.kan(hidden_states)
         kan_output = self.dropout(kan_output)
         return self.LayerNorm(kan_output + input_tensor)
-    
 
 
 class BertKanLayer(BertLayer):
@@ -122,6 +129,7 @@ class BertKanLayer(BertLayer):
 
     But replace every encoder layer's output MLPs with KANs
     """
+
     def __init__(self, config, bert_layer: BertLayer = None):
         super().__init__(config)
         self.chunk_size_feed_forward = config.chunk_size_feed_forward
@@ -144,11 +152,10 @@ class BertKanLayer(BertLayer):
             if self.add_cross_attention:
                 self.crossattention = bert_layer.crossattention
         self.output = BertLayerKan(config)
-    
+
     def feed_forward_chunk(self, attention_output):
         layer_output = self.output(attention_output, attention_output)
         return layer_output
-
 
 
 class BertKanEncoder(BertEncoder):
@@ -217,7 +224,6 @@ class BertKanForTokenClassification2(BertKanForTokenClassification):
         # Initialize weights and apply final processing
         self.post_init()
 
-
     def forward(
         self,
         input_ids: Optional[torch.Tensor] = None,
@@ -230,7 +236,7 @@ class BertKanForTokenClassification2(BertKanForTokenClassification):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        class_weights: Optional[torch.Tensor] = None
+        class_weights: Optional[torch.Tensor] = None,
     ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -265,7 +271,7 @@ class BertKanForTokenClassification2(BertKanForTokenClassification):
         if labels is not None:
             loss_fct = CrossEntropyLoss(weight=class_weights)
             loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-            
+
         if not return_dict:
             output = (logits,) + outputs[2:]
             return ((loss,) + output) if loss is not None else output
