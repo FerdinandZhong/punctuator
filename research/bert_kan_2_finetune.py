@@ -16,7 +16,7 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-training_data_file_path = "data/IWSLT/formatted/train2012"
+training_data_file_path = "data/training/all_data.txt"
 eval_data_file_path = "data/IWSLT/formatted/dev2012"
 
 with open(training_data_file_path, "r") as file:
@@ -47,12 +47,12 @@ training_args = NERTrainingArguments(
     validation_tags=validation_tags,
     model=Models.BERT_KAN_2,
     load_backbone_only=True,
-    model_weight_name="bert-large-uncased",
-    tokenizer_name="bert-large-uncased",
+    model_weight_name="bert-base-uncased",
+    tokenizer_name="bert-base-uncased",
     epoch=40,
     batch_size=16,
     model_storage_dir=args.model_storage_dir,
-    addtional_model_config={"dropout": 0.3, "attention_dropout": 0.3},
+    addtional_model_config={"dropout": 0.2, "attention_dropout": 0.2},
     gpu_device=0,
     warm_up_steps=1000,
     r_drop=False,
