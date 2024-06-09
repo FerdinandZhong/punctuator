@@ -19,7 +19,7 @@ from .constant import (
     URL,
     URL_TOKEN,
 )
-from .model_zoo import ModelCollection, Models
+from .model_zoo import ModelCollection, Models, model_type
 from .utils import is_ascii
 
 __all__ = [
@@ -43,4 +43,5 @@ __all__ = [
     "chinese_split",
     "Models",
     "ModelCollection",
+    "model_type",
 ]
