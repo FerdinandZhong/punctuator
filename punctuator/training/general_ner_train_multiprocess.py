@@ -262,6 +262,7 @@ class NERTrainingArguments(BaseModel):
         parser.add_argument(
             "--additional_tokenizer_config",
             type=str,
+            default="{}",
             help="JSON string of additional model config",
         )
         return parser
@@ -313,11 +314,11 @@ class NERTrainingArguments(BaseModel):
     ):
         try:
             additional_model_config = json.loads(args.additional_model_config)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             additional_model_config = {}
         try:
             additional_tokenizer_config = json.loads(args.additional_tokenizer_config)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, TypeError):
             additional_tokenizer_config = {}
         # Set the attributes from the parsed arguments.
         training_pipeline_args = cls(
