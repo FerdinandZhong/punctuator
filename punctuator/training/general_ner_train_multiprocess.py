@@ -253,6 +253,11 @@ class NERTrainingArguments(BaseModel):
             type=str,
             help="JSON string of additional model config",
         )
+        parser.add_argument(
+            "--additional_tokenizer_config",
+            type=str,
+            help="JSON string of additional model config",
+        )
         return parser
 
     @staticmethod
