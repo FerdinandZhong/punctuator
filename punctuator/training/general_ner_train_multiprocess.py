@@ -211,7 +211,7 @@ class NERTrainingArguments(BaseModel):
             "--local-rank", type=int, default=0, help="Local rank of the process"
         )
         parser.add_argument(
-            "--world-size",
+            "--world_size",
             type=int,
             default=1,
             help="World size of the multi-processing",
