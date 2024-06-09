@@ -123,7 +123,7 @@ class NERTrainingArguments(BaseModel):
     r_alpha: float = 0
     plot_steps: int = 50
     tensorboard_log_dir: Optional[str] = "runs"
-    use_class_weight: bool = False
+    use_class_weight: bool = True
 
     # model args
     additional_model_config: Optional[Dict]
@@ -211,7 +211,7 @@ class NERTrainingArguments(BaseModel):
             "--local-rank", type=int, default=0, help="Local rank of the process"
         )
         parser.add_argument(
-            "--world_size",
+            "--world-size",
             type=int,
             default=1,
             help="World size of the multi-processing",
@@ -247,6 +247,12 @@ class NERTrainingArguments(BaseModel):
             help="Intermediate step to persist the model weights",
         )
 
+        parser.add_argument(
+            "--use_class_weight",
+            type=bool,
+            default=True,
+            help="Whether to assign weights to classes"
+        )
         # Model-specific arguments
         parser.add_argument(
             "--additional_model_config",
