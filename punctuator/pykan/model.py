@@ -269,7 +269,7 @@ class BertKanForTokenClassification2(BertKanForTokenClassification):
 
         loss = None
         if labels is not None:
-            loss_fct = CrossEntropyLoss(weight=class_weights)
+            loss_fct = CrossEntropyLoss(weight=class_weights, reduction="mean")
             loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
 
         if not return_dict:
