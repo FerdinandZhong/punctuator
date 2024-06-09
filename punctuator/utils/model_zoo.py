@@ -27,6 +27,10 @@ ModelCollection = namedtuple(
 )
 
 
+def model_type(model_name):
+    return Models[model_name.upper()]
+
+
 class Models(Enum):
     DISTILBERT = ModelCollection(
         DistilBertConfig,
