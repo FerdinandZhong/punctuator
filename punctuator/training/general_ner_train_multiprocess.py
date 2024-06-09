@@ -96,7 +96,7 @@ class NERTrainingArguments(BaseModel):
         tensorboard_log_dir(Optional[str]): the tensorboard logs output directory, default is "runs"
 
         # model arguments
-        addtional_model_config(Optional[Dict]): additional configuration for model
+        additional_model_config(Optional[Dict]): additional configuration for model
     """
 
     # basic args
@@ -126,7 +126,7 @@ class NERTrainingArguments(BaseModel):
     use_class_weight: bool = False
 
     # model args
-    addtional_model_config: Optional[Dict]
+    additional_model_config: Optional[Dict]
     additional_tokenizer_config: Optional[Dict] = {}
 
     @staticmethod
@@ -208,7 +208,7 @@ class NERTrainingArguments(BaseModel):
             "--use_gpu", type=bool, default=True, help="Whether to use GPU for training"
         )
         parser.add_argument(
-            "--local_rank", type=int, default=0, help="Local rank of the process"
+            "--local-rank", type=int, default=0, help="Local rank of the process"
         )
         parser.add_argument(
             "--world_size",
@@ -257,10 +257,10 @@ class NERTrainingArguments(BaseModel):
 
     @staticmethod
     def generate_corpus(args: argparse.Namespace):
-        with open(args.training_data_file_path, "r") as file:
+        with open(args.training_data_file_path, "r", encoding="utf-8") as file:
             training_raw = file.readlines()
 
-        with open(args.validation_data_file_path, "r") as file:
+        with open(args.validation_data_file_path, "r", encoding="utf-8") as file:
             val_raw = file.readlines()
 
         (
@@ -322,7 +322,7 @@ class NERTrainingArguments(BaseModel):
             batch_size=args.batch_size,
             model_storage_dir=args.model_storage_dir,
             intermediate_persist_step=args.intermediate_persist_step,
-            addtional_model_config=additional_model_config,
+            additional_model_config=additional_model_config,
             local_rank=args.local_rank,
             warm_up_steps=args.world_size,
             r_drop=args.r_drop,
@@ -361,7 +361,7 @@ class NERTrainingPipeline:
             label2id=self.label2id,
             id2label=self.id2label,
             num_labels=self.num_labels,
-            **training_arguments.addtional_model_config,
+            **training_arguments.additional_model_config,
         )
 
         self.tokenizer = model_collection.tokenizer.from_pretrained(
