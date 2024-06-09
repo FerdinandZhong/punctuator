@@ -327,7 +327,7 @@ class NERTrainingArguments(BaseModel):
             training_tags=training_tags,
             validation_tags=validation_tags,
             model=model_type(args.model),
-            load_full_model=args.load_full_model,
+            load_backbone_only=args.load_backbone_only,
             model_weight_name=args.model_weight_name,
             tokenizer_name=args.tokenizer_name,
             epoch=args.epoch,
@@ -426,6 +426,7 @@ class NERTrainingPipeline:
         self.training_dataset = None
         self.val_dataset = None
         self.best_state_dict = None
+        self.best_acc_state_dict = None
 
     def tokenize(self):
         """
@@ -533,7 +534,8 @@ class NERTrainingPipeline:
             num_warmup_steps=self.arguments.warm_up_steps,
         )
 
-        best_valid_loss = 100
+        best_val_loss = 100
+        best_val_acc = 0
         no_improvement_count = 0
 
         with tqdm(total=self.arguments.epoch) as pbar:
@@ -589,13 +591,13 @@ class NERTrainingPipeline:
 
                     self._intermediate_persist(epoch + 1)
 
-                if val_loss < best_valid_loss:
-                    best_valid_loss = val_loss
-                    # if self.is_parallel:
-                    #     self.best_state_dict = self.classifier.module.state_dict()
-                    # else:
-                    #     self.best_state_dict = self.classifier.state_dict()
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
                     self.best_state_dict = self.classifier.state_dict()
+                    no_improvement_count = 0
+                elif val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    self.best_acc_state_dict = self.classifier.state_dict()
                     no_improvement_count = 0
                 else:
                     no_improvement_count += 1
@@ -641,6 +643,10 @@ class NERTrainingPipeline:
         torch.save(
             self.best_state_dict,
             os.path.join(self.arguments.model_storage_dir, "pytorch_model.bin"),
+        )
+        torch.save(
+            self.best_acc_state_dict,
+            os.path.join(self.arguments.model_storage_dir, "pytorch_model_best_acc.bin"),
         )
 
         logger.info("fine-tuned model stored to %s", self.arguments.model_storage_dir)
