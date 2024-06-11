@@ -124,7 +124,8 @@ class NERTrainingArguments(BaseModel):
     plot_steps: int = 50
     tensorboard_log_dir: Optional[str] = "runs"
     use_class_weight: bool = True
-
+    local_rank: int = 0
+    
     # model args
     additional_model_config: Optional[Dict]
     additional_tokenizer_config: Optional[Dict] = {}
@@ -209,12 +210,6 @@ class NERTrainingArguments(BaseModel):
         )
         parser.add_argument(
             "--local-rank", type=int, default=0, help="Local rank of the process"
-        )
-        parser.add_argument(
-            "--world_size",
-            type=int,
-            default=1,
-            help="World size of the multi-processing",
         )
         parser.add_argument(
             "--warm_up_steps", type=int, default=1000, help="Number of warm-up steps"
@@ -336,7 +331,7 @@ class NERTrainingArguments(BaseModel):
             intermediate_persist_step=args.intermediate_persist_step,
             additional_model_config=additional_model_config,
             local_rank=args.local_rank,
-            warm_up_steps=args.world_size,
+            warm_up_steps=args.warm_up_steps,
             r_drop=args.r_drop,
             r_alpha=args.r_alpha,
             tensorboard_log_dir=args.tensorboard_log_dir,
@@ -358,8 +353,14 @@ class NERTrainingPipeline:
             training_arguments (TrainingArguments): arguments passed to training pipeline
         """
         self.arguments = training_arguments
+        logger.info("cuda available: %s", torch.cuda.is_available()) 
+        if torch.cuda.is_available():
+            self.world_size=torch.cuda.device_count()
+        else:
+            self.world_size = 1
+        logger.info("local rank %s, world size: %s", training_arguments.local_rank, self.world_size)
         self.rank = self.arguments.local_rank
-        setup(self.rank, self.arguments.world_size, use_gpu=self.arguments.use_gpu)
+        setup(self.rank, self.world_size, use_gpu=self.arguments.use_gpu)
 
         self.label2id = training_arguments.label2id
         self.id2label = {id: label for label, id in self.label2id.items()}
@@ -380,6 +381,8 @@ class NERTrainingPipeline:
             training_arguments.tokenizer_name,
             **training_arguments.additional_tokenizer_config,
         )
+        logger.info("loaded tokenizer: %s", self.tokenizer)
+        logger.info("start loading model")
         if training_arguments.load_backbone_only:
             backbone_model = model_collection.backbone_model.from_pretrained(
                 training_arguments.model_weight_name,
@@ -396,7 +399,8 @@ class NERTrainingPipeline:
 
         self.classifier.to(self.arguments.local_rank)
         self.classifier = DDP(self.classifier, device_ids=[self.arguments.local_rank])
-
+        
+        logger.info("model loaded")
         if self.arguments.use_gpu:
             self.device = torch.device(f"cuda:{self.rank}")
         else:
@@ -650,6 +654,8 @@ class NERTrainingPipeline:
         )
 
         logger.info("fine-tuned model stored to %s", self.arguments.model_storage_dir)
+        
+        cleanup()
 
     def _encode_tags(self, tags, encodings, corpus):
         logger.info("encoding tags")

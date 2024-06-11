@@ -12,7 +12,7 @@ from sklearn.utils import class_weight
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from transformers import AdamW, get_constant_schedule_with_warmup
+from transformers import get_constant_schedule_with_warmup
 
 from punctuator.utils import NORMAL_TOKEN_TAG, Models
 
@@ -187,7 +187,7 @@ class NERTrainingPipeline:
 
         if self.arguments.use_class_weight:
             weights = [
-                weight if weight > 0 else DEFAULT_LABEL_WEIGHT
+                weight*2 if weight > 0 else DEFAULT_LABEL_WEIGHT
                 for weight in np.log(
                     class_weight.compute_class_weight(
                         "balanced",
@@ -242,7 +242,7 @@ class NERTrainingPipeline:
         val_loader = DataLoader(
             self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True
         )
-        optim = AdamW(self.classifier.parameters(), lr=1e-5)
+        optim = torch.optim.AdamW(self.classifier.parameters(), lr=1e-5)
 
         scheduler = get_constant_schedule_with_warmup(
             optim,

@@ -102,7 +102,9 @@ class BertLayerKan(nn.Module):
         self.kan = KAN(
             [
                 config.hidden_size,
-                config.hidden_size * 2,
+                config.hidden_size // 2,
+                config.hidden_size,
+                config.hidden_size // 2,
                 # config.hidden_size // 4,
                 # config.hidden_size // 2,
                 config.hidden_size,
@@ -121,7 +123,7 @@ class BertLayerKan(nn.Module):
         # )
         kan_output = self.kan(hidden_states)
         kan_output = self.dropout(kan_output)
-        return self.LayerNorm(kan_output + input_tensor)
+        return self.LayerNorm(kan_output+input_tensor)
 
 
 class BertKanLayer(BertLayer):
