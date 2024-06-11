@@ -189,16 +189,25 @@ class NERTrainingPipeline:
         logger.info(f"unique tag ids: {unique_tag_ids}, id2label: {self.id2label}")
 
         if self.arguments.use_class_weight:
+            # weights = [
+            #     weight*2 if weight > 0 else DEFAULT_LABEL_WEIGHT
+            #     for weight in np.log(
+            #         class_weight.compute_class_weight(
+            #             "balanced",
+            #             classes=np.array(list(unique_tag_ids)),
+            #             y=all_ner_tag_ids,
+            #         )
+            #     )
+            # ] * torch.cuda.device_count()
             weights = [
-                weight*2 if weight > 0 else DEFAULT_LABEL_WEIGHT
-                for weight in np.log(
-                    class_weight.compute_class_weight(
-                        "balanced",
-                        classes=np.array(list(unique_tag_ids)),
-                        y=all_ner_tag_ids,
-                    )
+                weight if weight > 1 else DEFAULT_LABEL_WEIGHT
+                for weight in class_weight.compute_class_weight(
+                    "balanced",
+                    classes=np.array(list(unique_tag_ids)),
+                    y=all_ner_tag_ids,
                 )
             ] * torch.cuda.device_count()
+
 
             logger.info(
                 f"class weights: {[round(weight, 2) for weight in weights]}, id2label: {self.id2label}"
