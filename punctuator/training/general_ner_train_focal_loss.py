@@ -437,7 +437,7 @@ class NERTrainingPipeline:
                     classes=np.array(list(unique_tag_ids)),
                     y=all_ner_tag_ids,
                 )
-            ] * torch.cuda.device_count()
+            ]
 
             logger.info(
                 "class weights: %s, id2label: %s",
@@ -451,8 +451,12 @@ class NERTrainingPipeline:
         else:
             self.class_weights = None
         
-        focal_loss = FocalLoss(self.class_weights)
-        self.classifier.set_loss_fct(focal_loss)
+        focal_loss = FocalLoss(self.class_weights).to(self.device)
+
+        if self.is_parallel:
+            self.classifier.module.set_loss_fct(focal_loss)
+        else:
+            self.classifier.set_loss_fct(focal_loss)
 
         self.train_encoded_tags = self._encode_tags(
             self.arguments.training_tags,
