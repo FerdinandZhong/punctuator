@@ -20,6 +20,7 @@ from transformers import (
 from punctuator.pykan.model import (
     BertKanForTokenClassification,
     BertKanForTokenClassification2,
+    BertKanForTokenClassificationFocalLoss
 )
 
 ModelCollection = namedtuple(
@@ -63,4 +64,8 @@ class Models(Enum):
 
     BERT_KAN_2 = ModelCollection(
         BertConfig, BertTokenizerFast, BertKanForTokenClassification2, BertModel
+    )
+
+    BERT_KAN_FOCAL_LOSS = ModelCollection(
+        BertConfig, BertTokenizerFast, BertKanForTokenClassificationFocalLoss, BertModel
     )

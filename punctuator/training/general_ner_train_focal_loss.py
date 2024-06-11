@@ -386,7 +386,6 @@ class NERTrainingPipeline:
             self.device = torch.device("cpu")
             self.is_parallel = False
 
-        self.loss_fct = FocalLoss()
         self.total_steps = 0
         self.class_weights = None
         self.train_encoded_tags = None
@@ -432,13 +431,11 @@ class NERTrainingPipeline:
 
         if self.arguments.use_class_weight:
             weights = [
-                weight if weight > 0 else DEFAULT_LABEL_WEIGHT
-                for weight in np.log(
-                    class_weight.compute_class_weight(
-                        "balanced",
-                        classes=np.array(list(unique_tag_ids)),
-                        y=all_ner_tag_ids,
-                    )
+                weight if weight > 1 else DEFAULT_LABEL_WEIGHT
+                for weight in class_weight.compute_class_weight(
+                    "balanced",
+                    classes=np.array(list(unique_tag_ids)),
+                    y=all_ner_tag_ids,
                 )
             ] * torch.cuda.device_count()
 
@@ -453,6 +450,9 @@ class NERTrainingPipeline:
             logger.info("class weights tensor: %s", self.class_weights)
         else:
             self.class_weights = None
+        
+        focal_loss = FocalLoss(self.class_weights)
+        self.classifier.set_loss_fct(focal_loss)
 
         self.train_encoded_tags = self._encode_tags(
             self.arguments.training_tags,
