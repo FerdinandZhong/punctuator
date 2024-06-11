@@ -745,10 +745,9 @@ class NERTrainingPipeline:
                         input_ids,
                         attention_mask=attention_mask,
                         labels=labels,
-                        class_weights=self.class_weights,
                     )
                     logits = outputs.logits
-                    loss = self.loss_fct(outputs.loss)
+                    loss = outputs.loss
 
                 if self.is_parallel:
                     loss = loss.mean()
