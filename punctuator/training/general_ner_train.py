@@ -152,6 +152,9 @@ class NERTrainingPipeline:
         else:
             self.device = torch.device("cpu")
             self.is_parallel = False
+        
+        self.best_state_dict = None
+        self.best_acc_state_dict = None
 
     def tokenize(self):
         """
@@ -251,6 +254,7 @@ class NERTrainingPipeline:
 
         best_valid_loss = 100
         no_improvement_count = 0
+        best_val_acc = 0
         self.total_steps = 0
 
         with tqdm(total=self.arguments.epoch) as pbar:
@@ -306,6 +310,13 @@ class NERTrainingPipeline:
                     else:
                         self.best_state_dict = self.classifier.state_dict()
                     no_improvement_count = 0
+                elif val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    if self.is_parallel:
+                        self.best_acc_state_dict = self.classifier.module.state_dict()
+                    else:
+                        self.best_acc_state_dict = self.classifier.state_dict()
+                    no_improvement_count = 0
                 else:
                     no_improvement_count += 1
                     if (
@@ -348,6 +359,11 @@ class NERTrainingPipeline:
         torch.save(
             self.best_state_dict,
             os.path.join(self.arguments.model_storage_dir, "pytorch_model.bin"),
+        )
+
+        torch.save(
+            self.best_acc_state_dict,
+            os.path.join(self.arguments.model_storage_dir, "pytorch_model_best_acc.bin"),
         )
 
         logger.info(f"fine-tuned model stored to {self.arguments.model_storage_dir}")
