@@ -151,16 +151,15 @@ import torch
 import torch.nn.functional as F
 
 class FocalLoss(torch.nn.Module):
-    def __init__(self, alpha=None, gamma=2.0, reduction='mean'):
+    def __init__(self, gamma=2.0, reduction='mean'):
         super(FocalLoss, self).__init__()
-        self.alpha = alpha
         self.gamma = gamma
         self.reduction = reduction
 
-    def forward(self, inputs, targets):
+    def forward(self, inputs, targets, alpha=None):
         log_probs = F.log_softmax(inputs, dim=-1)
         probs = torch.exp(log_probs)
-        ce_loss = F.nll_loss(log_probs, targets, reduction=self.reduction, weight=self.alpha)
+        ce_loss = F.nll_loss(log_probs, targets, reduction=self.reduction, weight=alpha)
         pt = probs.gather(1, targets.unsqueeze(-1)).squeeze(-1)
         focal_loss = ((1 - pt) ** self.gamma) * ce_loss
 

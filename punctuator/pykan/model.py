@@ -342,6 +342,7 @@ class BertKanForTokenClassificationFocalLoss(BertKanForTokenClassification):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        class_weights: Optional[torch.Tensor] = None,
     ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -374,7 +375,7 @@ class BertKanForTokenClassificationFocalLoss(BertKanForTokenClassification):
 
         loss = None
         if labels is not None:
-            loss = self._loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            loss = self._loss_fct(logits.view(-1, self.num_labels), labels.view(-1), class_weights)
 
         if not return_dict:
             output = (logits,) + outputs[2:]
