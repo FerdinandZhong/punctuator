@@ -17,7 +17,7 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-training_data_file_path = "data/training/all_data.txt"
+training_data_file_path = "data/IWSLT/formatted/train2012"
 eval_data_file_path = "data/IWSLT/formatted/dev2012"
 
 with open(training_data_file_path, "r") as file:
@@ -30,12 +30,12 @@ with open(eval_data_file_path, "r") as file:
 (
     training_corpus,
     training_tags,
-) = process_data(training_raw, 64, 160)
+) = process_data(training_raw, 32, 160)
 
 (
     validation_corpus,
     validation_tags,
-) = process_data(val_raw, 64, 160)
+) = process_data(val_raw, 32, 160)
 
 label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
 training_tags = [[label2id[tag] for tag in doc] for doc in training_tags]
@@ -50,18 +50,18 @@ training_args = NERTrainingArguments(
     load_backbone_only=True,
     model_weight_name="bert-large-uncased",
     tokenizer_name="bert-large-uncased",
-    epoch=50,
-    batch_size=64,
+    epoch=80,
+    batch_size=32,
     model_storage_dir=args.model_storage_dir,
-    addtional_model_config={"dropout": 0.3, "attention_dropout": 0.3},
+    addtional_model_config={"dropout": 0.25, "attention_dropout": 0.25},
     gpu_device=0,
-    warm_up_steps=1000,
+    warm_up_steps=500,
     r_drop=False,
     r_alpha=0.5,
     tensorboard_log_dir=args.tensorboard_log_dir,
     label2id=label2id,
-    early_stop_count=5,
-    use_class_weight=True,
+    early_stop_count=10,
+    use_class_weight=False,
 )
 
 training_pipeline = NERTrainingPipeline(training_args)
