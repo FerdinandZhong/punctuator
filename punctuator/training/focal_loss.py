@@ -164,8 +164,8 @@ class FocalLoss(torch.nn.Module):
         pt = probs.gather(1, targets.unsqueeze(-1)).squeeze(-1)
         focal_loss = ((1 - pt) ** self.gamma) * ce_loss
 
-        if self.reduction == 'mean':
-            return focal_loss.mean()
-        elif self.reduction == 'sum':
-            return focal_loss.sum()
+        # if self.reduction == 'mean':
+        #     return focal_loss.mean()
+        # elif self.reduction == 'sum':
+        #     return focal_loss.sum()
         return focal_loss
