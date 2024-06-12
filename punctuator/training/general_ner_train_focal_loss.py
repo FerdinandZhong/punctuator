@@ -496,7 +496,7 @@ class NERTrainingPipeline:
         val_loader = DataLoader(
             self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True
         )
-        optim = AdamW(self.classifier.parameters(), lr=1e-5)
+        optim = AdamW(self.classifier.parameters(), lr=1e-4)
 
         scheduler = get_constant_schedule_with_warmup(
             optim,
