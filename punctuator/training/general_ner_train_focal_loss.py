@@ -432,14 +432,15 @@ class NERTrainingPipeline:
 
         if self.arguments.use_class_weight:
             weights = [
-                weight if weight > 1 else DEFAULT_LABEL_WEIGHT
-                for weight in class_weight.compute_class_weight(
-                    "balanced",
-                    classes=np.array(list(unique_tag_ids)),
-                    y=all_ner_tag_ids,
+                weight if weight > 0 else DEFAULT_LABEL_WEIGHT
+                for weight in np.log(
+                    class_weight.compute_class_weight(
+                        "balanced",
+                        classes=np.array(list(unique_tag_ids)),
+                        y=all_ner_tag_ids,
+                    )
                 )
-            ]*torch.cuda.device_count()
-
+            ] * torch.cuda.device_count()
             logger.info(
                 "class weights: %s, id2label: %s",
                 ", ".join([f"{round(weight, 2)}" for weight in weights]),
@@ -496,7 +497,7 @@ class NERTrainingPipeline:
         val_loader = DataLoader(
             self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True
         )
-        optim = AdamW(self.classifier.parameters(), lr=1e-4)
+        optim = AdamW(self.classifier.parameters(), lr=1e-5)
 
         scheduler = get_constant_schedule_with_warmup(
             optim,
