@@ -152,7 +152,7 @@ class NERTrainingPipeline:
         else:
             self.device = torch.device("cpu")
             self.is_parallel = False
-        
+
         self.best_state_dict = None
         self.best_acc_state_dict = None
 
@@ -207,7 +207,6 @@ class NERTrainingPipeline:
                     y=all_ner_tag_ids,
                 )
             ] * torch.cuda.device_count()
-
 
             logger.info(
                 f"class weights: {[round(weight, 2) for weight in weights]}, id2label: {self.id2label}"
@@ -372,7 +371,9 @@ class NERTrainingPipeline:
 
         torch.save(
             self.best_acc_state_dict,
-            os.path.join(self.arguments.model_storage_dir, "pytorch_model_best_acc.bin"),
+            os.path.join(
+                self.arguments.model_storage_dir, "pytorch_model_best_acc.bin"
+            ),
         )
 
         logger.info(f"fine-tuned model stored to {self.arguments.model_storage_dir}")

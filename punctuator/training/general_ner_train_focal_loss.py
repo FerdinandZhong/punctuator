@@ -7,26 +7,23 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 from pydantic import BaseModel
 from sklearn.metrics import classification_report
 from sklearn.utils import class_weight
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AdamW, get_constant_schedule_with_warmup
 
+from punctuator.focal_loss.focal_loss import FocalLoss
 from punctuator.utils import NORMAL_TOKEN_TAG, Models, model_type
 
 from .finetuning_data_process import process_data
-from .focal_loss import FocalLoss
 
 logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 0.1
 DEFAULT_LABEL2ID = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
-
 
 
 class EncodingDataset:
@@ -99,7 +96,7 @@ class NERTrainingArguments(BaseModel):
     plot_steps: int = 50
     tensorboard_log_dir: Optional[str] = "runs"
     use_class_weight: bool = True
-    
+
     # model args
     additional_model_config: Optional[Dict]
     additional_tokenizer_config: Optional[Dict] = {}
@@ -220,7 +217,7 @@ class NERTrainingArguments(BaseModel):
             "--use_class_weight",
             type=bool,
             default=True,
-            help="Whether to assign weights to classes"
+            help="Whether to assign weights to classes",
         )
         # Model-specific arguments
         parser.add_argument(
@@ -327,9 +324,9 @@ class NERTrainingPipeline:
             training_arguments (TrainingArguments): arguments passed to training pipeline
         """
         self.arguments = training_arguments
-        logger.info("cuda available: %s", torch.cuda.is_available()) 
+        logger.info("cuda available: %s", torch.cuda.is_available())
         if torch.cuda.is_available():
-            self.world_size=torch.cuda.device_count()
+            self.world_size = torch.cuda.device_count()
         else:
             self.world_size = 1
 
@@ -367,10 +364,9 @@ class NERTrainingPipeline:
                 training_arguments.model_weight_name,
                 config=self.model_config,
             )
-        
+
         self.classifier.set_loss_fct(FocalLoss())
         logger.info("model loaded")
-
 
         if torch.cuda.is_available() and training_arguments.use_gpu:
             if torch.cuda.device_count() > 1:
@@ -452,7 +448,6 @@ class NERTrainingPipeline:
             logger.info("class weights tensor: %s", self.class_weights)
         else:
             self.class_weights = None
-        
 
         self.train_encoded_tags = self._encode_tags(
             self.arguments.training_tags,
@@ -621,11 +616,12 @@ class NERTrainingPipeline:
         )
         torch.save(
             self.best_acc_state_dict,
-            os.path.join(self.arguments.model_storage_dir, "pytorch_model_best_acc.bin"),
+            os.path.join(
+                self.arguments.model_storage_dir, "pytorch_model_best_acc.bin"
+            ),
         )
 
         logger.info("fine-tuned model stored to %s", self.arguments.model_storage_dir)
-        
 
     def _encode_tags(self, tags, encodings, corpus):
         logger.info("encoding tags")
@@ -736,12 +732,12 @@ class NERTrainingPipeline:
                     logits = logits_1.add(logits_2) / 2  # average over two logits
 
                 else:
-                    
+
                     outputs = self.classifier(
                         input_ids,
                         attention_mask=attention_mask,
                         labels=labels,
-                        class_weights=self.class_weights
+                        class_weights=self.class_weights,
                     )
                     logits = outputs.logits
                     loss = outputs.loss

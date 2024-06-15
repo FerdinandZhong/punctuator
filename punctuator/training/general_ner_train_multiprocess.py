@@ -125,7 +125,7 @@ class NERTrainingArguments(BaseModel):
     tensorboard_log_dir: Optional[str] = "runs"
     use_class_weight: bool = True
     local_rank: int = 0
-    
+
     # model args
     additional_model_config: Optional[Dict]
     additional_tokenizer_config: Optional[Dict] = {}
@@ -246,7 +246,7 @@ class NERTrainingArguments(BaseModel):
             "--use_class_weight",
             type=bool,
             default=True,
-            help="Whether to assign weights to classes"
+            help="Whether to assign weights to classes",
         )
         # Model-specific arguments
         parser.add_argument(
@@ -353,12 +353,16 @@ class NERTrainingPipeline:
             training_arguments (TrainingArguments): arguments passed to training pipeline
         """
         self.arguments = training_arguments
-        logger.info("cuda available: %s", torch.cuda.is_available()) 
+        logger.info("cuda available: %s", torch.cuda.is_available())
         if torch.cuda.is_available():
-            self.world_size=torch.cuda.device_count()
+            self.world_size = torch.cuda.device_count()
         else:
             self.world_size = 1
-        logger.info("local rank %s, world size: %s", training_arguments.local_rank, self.world_size)
+        logger.info(
+            "local rank %s, world size: %s",
+            training_arguments.local_rank,
+            self.world_size,
+        )
         self.rank = self.arguments.local_rank
         setup(self.rank, self.world_size, use_gpu=self.arguments.use_gpu)
 
@@ -399,7 +403,7 @@ class NERTrainingPipeline:
 
         self.classifier.to(self.arguments.local_rank)
         self.classifier = DDP(self.classifier, device_ids=[self.arguments.local_rank])
-        
+
         logger.info("model loaded")
         if self.arguments.use_gpu:
             self.device = torch.device(f"cuda:{self.rank}")
@@ -650,11 +654,13 @@ class NERTrainingPipeline:
         )
         torch.save(
             self.best_acc_state_dict,
-            os.path.join(self.arguments.model_storage_dir, "pytorch_model_best_acc.bin"),
+            os.path.join(
+                self.arguments.model_storage_dir, "pytorch_model_best_acc.bin"
+            ),
         )
 
         logger.info("fine-tuned model stored to %s", self.arguments.model_storage_dir)
-        
+
         cleanup()
 
     def _encode_tags(self, tags, encodings, corpus):

@@ -9,7 +9,6 @@ from transformers.modeling_outputs import TokenClassifierOutput
 from transformers.models.bert.modeling_bert import *
 
 
-
 class BertKanForTokenClassification(BertPreTrainedModel):
     def __init__(self, config, backbone_model: BertModel = None):
         super().__init__(config)
@@ -101,18 +100,18 @@ class BertLayerKan(nn.Module):
         super().__init__()
         self.hidden_size = config.hidden_size
         if config.hidden_size >= 1024:
-            self.dense_1 = nn.Linear(config.hidden_size, config.hidden_size//2)
+            self.dense_1 = nn.Linear(config.hidden_size, config.hidden_size // 2)
             self.kan = KAN(
                 [
-                    config.hidden_size//2,
+                    config.hidden_size // 2,
                     config.hidden_size * 2,
-                    config.hidden_size//2,
+                    config.hidden_size // 2,
                 ]
             )
-            self.dense_2 = nn.Linear(config.hidden_size//2, config.hidden_size)
+            self.dense_2 = nn.Linear(config.hidden_size // 2, config.hidden_size)
         else:
             self.dense_1, self.dense_2 = None, None
-            self.kan =  KAN(
+            self.kan = KAN(
                 [
                     config.hidden_size,
                     config.hidden_size * 4,
@@ -131,7 +130,7 @@ class BertLayerKan(nn.Module):
         else:
             kan_output = self.kan(hidden_states)
         kan_output = self.dropout(kan_output)
-        return self.LayerNorm(kan_output+input_tensor)
+        return self.LayerNorm(kan_output + input_tensor)
 
 
 class BertKanLayer(BertLayer):
@@ -292,7 +291,7 @@ class BertKanForTokenClassification2(BertKanForTokenClassification):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-    
+
 
 class BertKanForTokenClassificationFocalLoss(BertKanForTokenClassification):
     def __init__(self, config, backbone_model: BertModel = None):
@@ -323,10 +322,9 @@ class BertKanForTokenClassificationFocalLoss(BertKanForTokenClassification):
         # Initialize weights and apply final processing
         self.post_init()
         self._loss_fct = None
-    
+
     def set_loss_fct(self, focal_loss):
         self._loss_fct = focal_loss
-
 
     def forward(
         self,
@@ -373,7 +371,9 @@ class BertKanForTokenClassificationFocalLoss(BertKanForTokenClassification):
 
         loss = None
         if labels is not None:
-            loss = self._loss_fct(logits.view(-1, self.num_labels), labels.view(-1), class_weights)
+            loss = self._loss_fct(
+                logits.view(-1, self.num_labels), labels.view(-1), class_weights
+            )
 
         if not return_dict:
             output = (logits,) + outputs[2:]
