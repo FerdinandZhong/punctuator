@@ -8,6 +8,24 @@ from transformers.models.bert.modeling_bert import *
 
 class BertFocalLossForTokenClassification(BertForTokenClassification):
 
+    def __init__(self, config, backbone_model: BertModel = None):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+
+        if backbone_model is not None:
+            self.bert = backbone_model
+        else:
+            self.bert = BertModel(config, add_pooling_layer=False)
+        classifier_dropout = (
+            config.classifier_dropout
+            if config.classifier_dropout is not None
+            else config.hidden_dropout_prob
+        )
+        self.dropout = nn.Dropout(classifier_dropout)
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.post_init()
+        self._loss_fct = None
+
     def set_loss_fct(self, focal_loss):
         self._loss_fct = focal_loss
 
