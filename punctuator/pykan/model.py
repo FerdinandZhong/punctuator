@@ -99,25 +99,34 @@ class BertLayerKan(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.hidden_size = config.hidden_size
-        if config.hidden_size >= 1024:
-            self.dense_1 = nn.Linear(config.hidden_size, config.hidden_size // 2)
-            self.kan = KAN(
-                [
-                    config.hidden_size // 2,
-                    config.hidden_size * 2,
-                    config.hidden_size // 2,
-                ]
-            )
-            self.dense_2 = nn.Linear(config.hidden_size // 2, config.hidden_size)
-        else:
-            self.dense_1, self.dense_2 = None, None
-            self.kan = KAN(
-                [
-                    config.hidden_size,
-                    config.hidden_size * 4,
-                    config.hidden_size,
-                ]
-            )
+        self.dense_1 = nn.Linear(config.hidden_size, config.hidden_size // 2)
+        self.kan = KAN(
+            [
+                config.hidden_size // 2,
+                config.hidden_size * 2,
+                config.hidden_size // 2,
+            ]
+        )
+        self.dense_2 = nn.Linear(config.hidden_size // 2, config.hidden_size)
+        # if config.hidden_size >= 1024:
+        #     self.dense_1 = nn.Linear(config.hidden_size, config.hidden_size // 2)
+        #     self.kan = KAN(
+        #         [
+        #             config.hidden_size // 2,
+        #             config.hidden_size * 2,
+        #             config.hidden_size // 2,
+        #         ]
+        #     )
+        #     self.dense_2 = nn.Linear(config.hidden_size // 2, config.hidden_size)
+        # else:
+        #     self.dense_1, self.dense_2 = None, None
+        #     self.kan = KAN(
+        #         [
+        #             config.hidden_size,
+        #             config.hidden_size * 4,
+        #             config.hidden_size,
+        #         ]
+        #     )
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
@@ -310,15 +319,16 @@ class BertKanForTokenClassificationFocalLoss(BertKanForTokenClassification):
             else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
-        self.classifier = KAN(
-            [
-                config.hidden_size,
-                config.hidden_size // 2,
-                config.hidden_size // 4,
-                config.hidden_size // 8,
-                config.num_labels,
-            ]
-        )
+        # self.classifier = KAN(
+        #     [
+        #         config.hidden_size,
+        #         config.hidden_size // 2,
+        #         config.hidden_size // 4,
+        #         config.hidden_size // 8,
+        #         config.num_labels,
+        #     ]
+        # )
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         # Initialize weights and apply final processing
         self.post_init()
         self._loss_fct = None
