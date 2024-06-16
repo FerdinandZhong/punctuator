@@ -143,11 +143,11 @@ class BertLayerKan(nn.Module):
     def forward(
         self, hidden_states: torch.Tensor, input_tensor: torch.Tensor
     ) -> torch.Tensor:
-        if self.dense_1 is not None and self.dense_2 is not None:
-            hidden_states = self.dense_1(hidden_states)
-            kan_output = self.dense_2(self.kan(hidden_states))
-        else:
-            kan_output = self.kan(hidden_states)
+        # if self.dense_1 is not None and self.dense_2 is not None:
+        #     hidden_states = self.dense_1(hidden_states)
+        #     kan_output = self.dense_2(self.kan(hidden_states))
+        # else:
+        kan_output = self.kan(hidden_states)
         kan_output = self.dropout(kan_output)
         return self.LayerNorm(kan_output + input_tensor)
 
