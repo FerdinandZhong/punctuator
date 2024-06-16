@@ -17,7 +17,7 @@ from tqdm import tqdm
 from transformers import AdamW, get_constant_schedule_with_warmup
 
 from punctuator.focal_loss.focal_loss import FocalLoss
-from punctuator.utils import NORMAL_TOKEN_TAG, Models, model_type
+from punctuator.utils import NORMAL_TOKEN_TAG, Models, model_type, str2bool
 
 from .finetuning_data_process import process_data
 
@@ -135,7 +135,7 @@ class NERTrainingArguments(BaseModel):
         )
         parser.add_argument(
             "--load_backbone_only",
-            type=bool,
+            type=str2bool,
             default=True,
             help="Load the backbone model only.",
         )
@@ -177,7 +177,7 @@ class NERTrainingArguments(BaseModel):
             help="Epochs to stop training if no improvement",
         )
         parser.add_argument(
-            "--use_gpu", type=bool, default=True, help="Whether to use GPU for training"
+            "--use_gpu", type=str2bool, default=True, help="Whether to use GPU for training"
         )
         parser.add_argument(
             "--gpu_device", type=int, default=0, help="Local rank of the process"
@@ -186,7 +186,7 @@ class NERTrainingArguments(BaseModel):
             "--warm_up_steps", type=int, default=1000, help="Number of warm-up steps"
         )
         parser.add_argument(
-            "--r_drop", type=bool, default=False, help="Whether to train with R-Drop"
+            "--r_drop", type=str2bool, default=False, help="Whether to train with R-Drop"
         )
         parser.add_argument(
             "--r_alpha",
@@ -215,7 +215,7 @@ class NERTrainingArguments(BaseModel):
 
         parser.add_argument(
             "--use_class_weight",
-            type=bool,
+            type=str2bool,
             default=True,
             help="Whether to assign weights to classes",
         )
