@@ -99,15 +99,24 @@ class BertLayerKan(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.dense_1 = nn.Linear(config.hidden_size, config.hidden_size // 2)
         self.kan = KAN(
             [
-                config.hidden_size // 2,
-                config.hidden_size * 2,
-                config.hidden_size // 2,
+                config.hidden_size,
+                config.hidden_size,
             ]
         )
-        self.dense_2 = nn.Linear(config.hidden_size // 2, config.hidden_size)
+        # 0615 ==================================================================
+        # self.dense_1 = nn.Linear(config.hidden_size, config.hidden_size // 2)
+        # self.kan = KAN(
+        #     [
+        #         config.hidden_size // 2,
+        #         config.hidden_size * 2,
+        #         config.hidden_size // 2,
+        #     ]
+        # )
+        # self.dense_2 = nn.Linear(config.hidden_size // 2, config.hidden_size)
+        # 0615 ==================================================================
+        # 0611 ==================================================================
         # if config.hidden_size >= 1024:
         #     self.dense_1 = nn.Linear(config.hidden_size, config.hidden_size // 2)
         #     self.kan = KAN(
@@ -127,6 +136,7 @@ class BertLayerKan(nn.Module):
         #             config.hidden_size,
         #         ]
         #     )
+        # 0611 ==================================================================
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
 
