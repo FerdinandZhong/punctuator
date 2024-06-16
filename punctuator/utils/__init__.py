@@ -20,7 +20,7 @@ from .constant import (
     URL_TOKEN,
 )
 from .model_zoo import ModelCollection, Models, model_type
-from .utils import is_ascii
+from .utils import is_ascii, str2bool
 
 __all__ = [
     "ALL_PUNCS",
@@ -30,6 +30,7 @@ __all__ = [
     "DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP",
     "NORMAL_TOKEN_TAG",
     "is_ascii",
+    "str2bool",
     "URL",
     "CURRENCY",
     "EMAIL_TOKEN",
