@@ -27,13 +27,15 @@ class BertKanForTokenClassification(BertPreTrainedModel):
         self.classifier = KAN(
             [
                 config.hidden_size,
-                config.hidden_size // 2,
-                config.hidden_size // 8,
                 config.num_labels,
             ]
         )
         # Initialize weights and apply final processing
         self.post_init()
+        self._loss_fct = None
+
+    def set_loss_fct(self, focal_loss):
+        self._loss_fct = focal_loss
 
     # TODO: add r-drop
     def forward(
@@ -48,6 +50,7 @@ class BertKanForTokenClassification(BertPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        class_weights: Optional[torch.Tensor] = None,
     ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
@@ -80,8 +83,9 @@ class BertKanForTokenClassification(BertPreTrainedModel):
 
         loss = None
         if labels is not None:
-            loss_fct = CrossEntropyLoss()
-            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            loss = self._loss_fct(
+                logits.view(-1, self.num_labels), labels.view(-1), class_weights
+            )
 
         if not return_dict:
             output = (logits,) + outputs[2:]
