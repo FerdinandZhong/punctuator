@@ -338,16 +338,18 @@ class BertKanForTokenClassificationFocalLoss(BertKanForTokenClassification):
             else config.hidden_dropout_prob
         )
         self.dropout = nn.Dropout(classifier_dropout)
-        # self.classifier = KAN(
-        #     [
-        #         config.hidden_size,
-        #         config.hidden_size // 2,
-        #         config.hidden_size // 4,
-        #         config.hidden_size // 8,
-        #         config.num_labels,
-        #     ]
-        # )
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.classifier = KAN(
+            [
+                config.hidden_size,
+                config.hidden_size // 2,
+                config.hidden_size // 4,
+                config.hidden_size // 8,
+                config.num_labels,
+            ]
+        )
+        # 0615 ==================================================================
+        # self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        # 0615 ==================================================================
         # Initialize weights and apply final processing
         self.post_init()
         self._loss_fct = None
