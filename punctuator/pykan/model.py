@@ -103,12 +103,14 @@ class BertLayerKan(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.hidden_size = config.hidden_size
-        self.kan = KAN(
-            [
-                config.hidden_size,
-                config.hidden_size,
-            ]
-        )
+        # 0616 ==================================================================
+        # self.kan = KAN(
+        #     [
+        #         config.hidden_size,
+        #         config.hidden_size,
+        #     ]
+        # )
+        # 0616 ==================================================================
         # 0615 ==================================================================
         # self.dense_1 = nn.Linear(config.hidden_size, config.hidden_size // 2)
         # self.kan = KAN(
@@ -121,25 +123,25 @@ class BertLayerKan(nn.Module):
         # self.dense_2 = nn.Linear(config.hidden_size // 2, config.hidden_size)
         # 0615 ==================================================================
         # 0611 ==================================================================
-        # if config.hidden_size >= 1024:
-        #     self.dense_1 = nn.Linear(config.hidden_size, config.hidden_size // 2)
-        #     self.kan = KAN(
-        #         [
-        #             config.hidden_size // 2,
-        #             config.hidden_size * 2,
-        #             config.hidden_size // 2,
-        #         ]
-        #     )
-        #     self.dense_2 = nn.Linear(config.hidden_size // 2, config.hidden_size)
-        # else:
-        #     self.dense_1, self.dense_2 = None, None
-        #     self.kan = KAN(
-        #         [
-        #             config.hidden_size,
-        #             config.hidden_size * 4,
-        #             config.hidden_size,
-        #         ]
-        #     )
+        if config.hidden_size >= 1024:
+            self.dense_1 = nn.Linear(config.hidden_size, config.hidden_size // 2)
+            self.kan = KAN(
+                [
+                    config.hidden_size // 2,
+                    config.hidden_size * 2,
+                    config.hidden_size // 2,
+                ]
+            )
+            self.dense_2 = nn.Linear(config.hidden_size // 2, config.hidden_size)
+        else:
+            self.dense_1, self.dense_2 = None, None
+            self.kan = KAN(
+                [
+                    config.hidden_size,
+                    config.hidden_size * 4,
+                    config.hidden_size,
+                ]
+            )
         # 0611 ==================================================================
         self.LayerNorm = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
@@ -147,11 +149,14 @@ class BertLayerKan(nn.Module):
     def forward(
         self, hidden_states: torch.Tensor, input_tensor: torch.Tensor
     ) -> torch.Tensor:
-        # if self.dense_1 is not None and self.dense_2 is not None:
-        #     hidden_states = self.dense_1(hidden_states)
-        #     kan_output = self.dense_2(self.kan(hidden_states))
-        # else:
-        kan_output = self.kan(hidden_states)
+        if self.dense_1 is not None and self.dense_2 is not None:
+            hidden_states = self.dense_1(hidden_states)
+            kan_output = self.dense_2(self.kan(hidden_states))
+        else:
+            kan_output = self.kan(hidden_states)
+        # 0616 ==================================================================
+        # kan_output = self.kan(hidden_states)
+        # 0616 ==================================================================
         kan_output = self.dropout(kan_output)
         return self.LayerNorm(kan_output + input_tensor)
 
