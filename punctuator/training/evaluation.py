@@ -122,7 +122,7 @@ class EvaluationArguments(BaseModel):
 
     @staticmethod
     def generate_corpus(args: argparse.Namespace):
-        with open(args.eval_data_file_path, "r", encoding="utf-8") as file:
+        with open(args.evaluation_data_file_path, "r", encoding="utf-8") as file:
             evaluation_raw = file.readlines()
 
         (
