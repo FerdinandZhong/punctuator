@@ -1,6 +1,6 @@
+import argparse
 import logging
 import sys
-import argparse
 
 version = sys.version_info
 above_36 = version.major >= 3 and version.minor > 6
@@ -68,9 +68,9 @@ def is_ascii(text):
 def str2bool(value):
     if isinstance(value, bool):
         return value
-    if value.lower() in ('yes', 'true', 't', 'y', '1'):
+    if value.lower() in ("yes", "true", "t", "y", "1"):
         return True
-    elif value.lower() in ('no', 'false', 'f', 'n', '0'):
+    elif value.lower() in ("no", "false", "f", "n", "0"):
         return False
     else:
-        raise argparse.ArgumentTypeError('Boolean value expected.')
+        raise argparse.ArgumentTypeError("Boolean value expected.")

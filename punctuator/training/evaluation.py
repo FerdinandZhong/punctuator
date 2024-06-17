@@ -1,3 +1,5 @@
+import argparse
+import json
 import logging
 from os import environ
 from typing import Dict, List, Optional
@@ -10,8 +12,9 @@ from torch._C import device  # noqa: F401
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from punctuator.utils import NORMAL_TOKEN_TAG, Models
+from punctuator.utils import NORMAL_TOKEN_TAG, Models, model_type, str2bool
 
+from .finetuning_data_process import process_data
 from .punctuation_data_process import EncodingDataset
 
 logger = logging.getLogger(__name__)
@@ -42,6 +45,136 @@ class EvaluationArguments(BaseModel):
     label2id: Optional[Dict]
     gpu_device: Optional[int] = environ.get("CUDA_VISIBLE_DEVICES", 0)
     additional_tokenizer_config: Optional[Dict] = {}
+    additional_model_config: Optional[Dict] = {}
+
+    @staticmethod
+    def add_cli_args(
+        parser: argparse.ArgumentParser,
+    ) -> argparse.ArgumentParser:
+
+        # Basic arguments
+        parser.add_argument(
+            "--evaluation_data_file_path",
+            type=str,
+            required=True,
+            help="Path to training corpus file",
+        )
+        parser.add_argument(
+            "--min_sequence_length",
+            type=int,
+            required=True,
+            default=32,
+            help="Minimum sequence length (count of the words) in each sample.",
+        )
+        parser.add_argument(
+            "--max_sequence_length",
+            type=int,
+            required=True,
+            default=128,
+            help="Maximum sequence length (count of the words) in each sample.",
+        )
+        parser.add_argument(
+            "--model_weight_name",
+            type=str,
+            required=True,
+            help="Path or name of pre-trained model weight",
+        )
+        parser.add_argument(
+            "--tokenizer_name",
+            type=str,
+            required=True,
+            help="Name of pretrained tokenizer",
+        )
+        parser.add_argument(
+            "--model",
+            type=str,
+            choices=[m.name for m in Models],
+            help="Model to use",
+        )
+
+        # Training arguments
+        parser.add_argument("--batch_size", type=int, required=True, help="Batch size")
+        parser.add_argument(
+            "--label2id", type=str, required=True, help="Label to ID mapping"
+        )
+        parser.add_argument(
+            "--use_gpu",
+            type=str2bool,
+            default=True,
+            help="Whether to use GPU for training",
+        )
+        parser.add_argument(
+            "--gpu_device", type=int, default=0, help="Local rank of the process"
+        )
+        # Model-specific arguments
+        parser.add_argument(
+            "--additional_model_config",
+            type=str,
+            help="JSON string of additional model config",
+        )
+        parser.add_argument(
+            "--additional_tokenizer_config",
+            type=str,
+            default="{}",
+            help="JSON string of additional model config",
+        )
+        return parser
+
+    @staticmethod
+    def generate_corpus(args: argparse.Namespace):
+        with open(args.eval_data_file_path, "r", encoding="utf-8") as file:
+            evaluation_raw = file.readlines()
+
+        (
+            evaluation_corpus,
+            evaluation_tags,
+        ) = process_data(
+            evaluation_raw, args.min_sequence_length, args.max_sequence_length
+        )
+
+        try:
+            label2id = json.loads(args.label2id)
+        except json.JSONDecodeError:
+            label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
+        evaluation_tags = [[label2id[tag] for tag in doc] for doc in evaluation_tags]
+
+        return (
+            evaluation_corpus,
+            evaluation_tags,
+            label2id,
+        )
+
+    @classmethod
+    def from_cli_args(
+        cls,
+        args: argparse.Namespace,
+        evaluation_corpus: List[List[str]],
+        evaluation_tags: List[List[str]],
+        label2id: Dict,
+    ):
+        try:
+            additional_model_config = json.loads(args.additional_model_config)
+        except (json.JSONDecodeError, TypeError):
+            additional_model_config = {}
+        try:
+            additional_tokenizer_config = json.loads(args.additional_tokenizer_config)
+        except (json.JSONDecodeError, TypeError):
+            additional_tokenizer_config = {}
+        # Set the attributes from the parsed arguments.
+        evaluation_pipeline_args = cls(
+            evaluation_corpus=evaluation_corpus,
+            evaluation_tags=evaluation_tags,
+            model=model_type(args.model),
+            model_weight_name=args.model_weight_name,
+            tokenizer_name=args.tokenizer_name,
+            batch_size=args.batch_size,
+            additional_model_config=additional_model_config,
+            gpu_device=args.gpu_device,
+            label2id=label2id,
+            additional_tokenizer_config=additional_tokenizer_config,
+        )
+
+        return evaluation_pipeline_args
 
 
 class EvaluationPipeline:

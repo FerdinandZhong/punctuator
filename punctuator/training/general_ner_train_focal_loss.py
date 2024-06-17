@@ -177,7 +177,10 @@ class NERTrainingArguments(BaseModel):
             help="Epochs to stop training if no improvement",
         )
         parser.add_argument(
-            "--use_gpu", type=str2bool, default=True, help="Whether to use GPU for training"
+            "--use_gpu",
+            type=str2bool,
+            default=True,
+            help="Whether to use GPU for training",
         )
         parser.add_argument(
             "--gpu_device", type=int, default=0, help="Local rank of the process"
@@ -186,7 +189,10 @@ class NERTrainingArguments(BaseModel):
             "--warm_up_steps", type=int, default=1000, help="Number of warm-up steps"
         )
         parser.add_argument(
-            "--r_drop", type=str2bool, default=False, help="Whether to train with R-Drop"
+            "--r_drop",
+            type=str2bool,
+            default=False,
+            help="Whether to train with R-Drop",
         )
         parser.add_argument(
             "--r_alpha",
