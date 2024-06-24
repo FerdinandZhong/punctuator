@@ -235,9 +235,8 @@ class EvaluationPipeline:
                 attention_mask = batch["attention_mask"].to(self.device)
                 labels = batch["labels"].to(self.device)
                 outputs = self.classifier(
-                    input_ids, attention_mask=attention_mask, labels=labels
+                    input_ids, attention_mask=attention_mask
                 )
-                loss = outputs.loss
                 logits = outputs.logits
 
                 true_preds, true_labels = self._post_process(
@@ -247,11 +246,6 @@ class EvaluationPipeline:
                 total_labels.extend(true_labels)
 
                 pbar.update(1)
-                pbar.set_postfix(
-                    {
-                        "Last_batch_loss": f"{loss:.2f}",
-                    }
-                )
 
         tested_labels = []
         target_names = []
