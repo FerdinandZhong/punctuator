@@ -123,38 +123,38 @@ def clean_up_data_from_txt(
 
 def process_line(line, ner_mapping):
     text_list = line.split()
-    token_list = []
+    word_list = []
     tag_list = []
     if len(text_list) == 0:
-        return token_list, tag_list
+        return word_list, tag_list
     # clean up puncs in the beginning of the text
     latest_word = text_list.pop(0)
     while latest_word in ner_mapping:
         if not text_list:
             break
         latest_word = text_list.pop(0)
-    latest_token = NORMAL_TOKEN_TAG
+    latest_tag = NORMAL_TOKEN_TAG
     latest_is_punc = False
     for word in text_list:
         if word in ner_mapping:
             if not latest_is_punc:
-                latest_token = ner_mapping[word]
+                latest_tag = ner_mapping[word]
                 latest_is_punc = True
-                token_list.append(latest_word)
-                tag_list.append(latest_token)
+                word_list.append(latest_word)
+                tag_list.append(latest_tag)
             else:
                 pass
         else:
             if not latest_is_punc:
-                token_list.append(latest_word)
-                tag_list.append(latest_token)
+                word_list.append(latest_word)
+                tag_list.append(latest_tag)
             latest_is_punc = False
             latest_word = word
-            latest_token = NORMAL_TOKEN_TAG
+            latest_tag = NORMAL_TOKEN_TAG
     if not latest_is_punc:
-        token_list.append(latest_word)
-        tag_list.append(latest_token)
-    return token_list, tag_list
+        word_list.append(latest_word)
+        tag_list.append(latest_tag)
+    return word_list, tag_list
 
 
 def generate_corpus(
@@ -170,13 +170,13 @@ def generate_corpus(
         ner_mapping (dict, optional): ner mapping for puncs and labels
     """
     logger.info("generate training data")
-    with open(cleaned_data_path, "r") as data_file:
+    with open(cleaned_data_path, "r", encoding="utf-8") as data_file:
         lines = data_file.readlines()
-    with open(training_data_path, "w+") as training_data_file:
+    with open(training_data_path, "w+", encoding="utf-8") as training_data_file:
         pbar = tqdm(lines)
         for line in pbar:
             tokens, tags = process_line(line, ner_mapping)
             for token, tag in zip(tokens, tags):
                 training_data_file.write("%s\t%s\n" % (token, tag))
-            training_data_file.write("\n")
+            # training_data_file.write("\n")
         pbar.close()

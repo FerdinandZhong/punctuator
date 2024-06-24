@@ -1,3 +1,6 @@
 models/punctuator/config.json filter=lfs diff=lfs merge=lfs -text
 models/punctuator/pytorch_model.bin filter=lfs diff=lfs merge=lfs -text
 data/training/all_data.txt filter=lfs diff=lfs merge=lfs -text
+data/code_switching_training_data/training.txt filter=lfs diff=lfs merge=lfs -text
+data/code_switching_training_data/validation.txt filter=lfs diff=lfs merge=lfs -text
+data/code_switching_training_data/test.txt filter=lfs diff=lfs merge=lfs -text

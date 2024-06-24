@@ -2,6 +2,7 @@ from .additional_data_process import (
     chinese_split,
     keep_only_latin_characters,
     remove_brackets_text,
+    clean_digits
 )
 from .constant import (
     ALL_PUNCS,
@@ -45,4 +46,5 @@ __all__ = [
     "Models",
     "ModelCollection",
     "model_type",
+    "clean_digits"
 ]

@@ -54,6 +54,7 @@ def merge_data(whole_data_path, *tokens_data_paths):
             for line in lines:
                 if line:
                     whole_data_file.write(line)
+    
 
 
 if __name__ == "__main__":

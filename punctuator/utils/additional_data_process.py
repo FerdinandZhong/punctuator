@@ -16,7 +16,7 @@ def remove_brackets_text(input):
     return re.sub(r"\([^()]*\)", " ", input)
 
 
-def keep_only_latin_characters(input):
+def keep_only_latin_characters(mixed_input, replace_char: str = ""):
     """keep only latin characters
 
     Args:
@@ -24,7 +24,7 @@ def keep_only_latin_characters(input):
 
     """
     regex = re.compile("[^\u0020-\u024F]")
-    return regex.sub("", input)
+    return regex.sub(replace_char, mixed_input).strip()
 
 
 def chinese_split(input):
@@ -54,3 +54,22 @@ def chinese_split(input):
         # mal row
         logger.warning(f"parsing data: {input} with error: {str(err)}")
     return result
+
+def clean_digits(text):
+    """
+    Removes commas and periods that are inside numbers from the given text.
+
+    Args:
+        text (str): The input text where digits might contain commas or periods.
+
+    Returns:
+        str: The modified text with commas and periods removed from within numbers.
+    """
+    # This pattern matches commas and periods inside numbers
+    pattern = r'(?<=\d)[,.](?=\d)'
+    # Replace found patterns with nothing (remove them)
+    result = re.sub(pattern, '', text)
+    return result
+    
+
+
