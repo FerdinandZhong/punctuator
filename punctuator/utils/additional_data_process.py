@@ -55,6 +55,7 @@ def chinese_split(input):
         logger.warning(f"parsing data: {input} with error: {str(err)}")
     return result
 
+
 def clean_digits(text):
     """
     Removes commas and periods that are inside numbers from the given text.
@@ -66,10 +67,7 @@ def clean_digits(text):
         str: The modified text with commas and periods removed from within numbers.
     """
     # This pattern matches commas and periods inside numbers
-    pattern = r'(?<=\d)[,.](?=\d)'
+    pattern = r"(?<=\d)[,.](?=\d)"
     # Replace found patterns with nothing (remove them)
-    result = re.sub(pattern, '', text)
+    result = re.sub(pattern, "", text)
     return result
-    
-
-

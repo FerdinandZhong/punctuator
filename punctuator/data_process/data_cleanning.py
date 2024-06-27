@@ -12,7 +12,7 @@ from punctuator.utils import (
     TELEPHONE_TOKEN,
     URL,
     URL_TOKEN,
-    clean_digits
+    clean_digits,
 )
 
 tqdm.pandas()
@@ -81,7 +81,7 @@ def text_lines_cleaning(
                     logger.warning(f"error {str(err)} with func {func} for line {line}")
 
         line = clean_digits(line)
-        
+
         line = replace(line, EMAIL, EMAIL_TOKEN)
 
         line = replace(line, URL, URL_TOKEN)
@@ -89,7 +89,6 @@ def text_lines_cleaning(
         line = replace(line, CURRENCY, CURRENCY_TOKEN)
 
         line = replace(line, TELEPHONE, TELEPHONE_TOKEN)
-
 
         translator = str.maketrans({key: None for key in removed_punctuations})
         space_translator = str.maketrans(

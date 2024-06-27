@@ -234,9 +234,7 @@ class EvaluationPipeline:
                 input_ids = batch["input_ids"].to(self.device).long()
                 attention_mask = batch["attention_mask"].to(self.device)
                 labels = batch["labels"].to(self.device)
-                outputs = self.classifier(
-                    input_ids, attention_mask=attention_mask
-                )
+                outputs = self.classifier(input_ids, attention_mask=attention_mask)
                 logits = outputs.logits
 
                 true_preds, true_labels = self._post_process(

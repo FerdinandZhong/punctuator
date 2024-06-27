@@ -3,7 +3,54 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.utils.checkpoint
 from transformers.modeling_outputs import TokenClassifierOutput
+from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.roformer.modeling_roformer import *
+
+
+class RotaryBertConfig(BertConfig):
+    def __init__(
+        self,
+        vocab_size=30522,
+        hidden_size=768,
+        num_hidden_layers=12,
+        num_attention_heads=12,
+        intermediate_size=3072,
+        hidden_act="gelu",
+        hidden_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.1,
+        max_position_embeddings=512,
+        type_vocab_size=2,
+        initializer_range=0.02,
+        layer_norm_eps=1e-12,
+        pad_token_id=0,
+        position_embedding_type="absolute",
+        use_cache=True,
+        classifier_dropout=None,
+        embedding_size=768,
+        rotary_value=False,
+        **kwargs
+    ):
+        super().__init__(
+            vocab_size,
+            hidden_size,
+            num_hidden_layers,
+            num_attention_heads,
+            intermediate_size,
+            hidden_act,
+            hidden_dropout_prob,
+            attention_probs_dropout_prob,
+            max_position_embeddings,
+            type_vocab_size,
+            initializer_range,
+            layer_norm_eps,
+            pad_token_id,
+            position_embedding_type,
+            use_cache,
+            classifier_dropout,
+            **kwargs
+        )
+        self.embedding_size = embedding_size
+        self.rotary_value = rotary_value
 
 
 class RoFormerFocalLossForTokenClassification(RoFormerForTokenClassification):
@@ -11,7 +58,7 @@ class RoFormerFocalLossForTokenClassification(RoFormerForTokenClassification):
     def __init__(self, config, backbone_model: RoFormerModel = None):
         super().__init__(config)
         self.num_labels = config.num_labels
-        
+
         # in Roformer, the postion embedding is defined per head as the rotary is computed within each head
 
         if backbone_model is not None:
@@ -62,7 +109,6 @@ class RoFormerFocalLossForTokenClassification(RoFormerForTokenClassification):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-
 
         sequence_output = outputs[0]
 
