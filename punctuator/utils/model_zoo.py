@@ -15,9 +15,11 @@ from transformers import (
     RobertaForTokenClassification,
     RobertaModel,
     RobertaTokenizerFast,
+    RoFormerModel
 )
 
 from punctuator.focal_loss.bert_focal_loss import BertFocalLossForTokenClassification
+from punctuator.rotary_bert.focal_loss_bert import RoFormerFocalLossForTokenClassification
 from punctuator.pykan.model import (
     BertKanForTokenClassification,
     BertKanForTokenClassification2,
@@ -75,4 +77,8 @@ class Models(Enum):
 
     BERT_KAN_FOCAL_LOSS = ModelCollection(
         BertConfig, BertTokenizerFast, BertKanForTokenClassificationFocalLoss, BertModel
+    )
+
+    ROFORMER_FOCAL_LOSS = ModelCollection(
+        BertConfig, BertTokenizerFast, RoFormerFocalLossForTokenClassification, RoFormerModel
     )

@@ -225,6 +225,12 @@ class NERTrainingArguments(BaseModel):
             default=True,
             help="Whether to assign weights to classes",
         )
+        parser.add_argument(
+            "--log_class_weight",
+            type=str2bool,
+            default=True,
+            help="Whether to assign weights to classes",
+        )
         # Model-specific arguments
         parser.add_argument(
             "--additional_model_config",
@@ -316,6 +322,7 @@ class NERTrainingArguments(BaseModel):
             label2id=label2id,
             early_stop_count=args.early_stop_count,
             use_class_weight=args.use_class_weight,
+            log_class_weight=args.log_class_weight,
             additional_tokenizer_config=additional_tokenizer_config,
         )
 
@@ -365,12 +372,14 @@ class NERTrainingPipeline:
             self.classifier = model_collection.model(
                 self.model_config, backbone_model=backbone_model
             )
+           
         else:
             self.classifier = model_collection.model.from_pretrained(
                 training_arguments.model_weight_name,
                 config=self.model_config,
             )
 
+        self.model_class = self.classifier.__class__.__name__
         self.classifier.set_loss_fct(FocalLoss())
         logger.info("model loaded")
 
@@ -433,16 +442,23 @@ class NERTrainingPipeline:
         logger.info("unique tag ids: %s, id2label: %s", unique_tag_ids, self.id2label)
 
         if self.arguments.use_class_weight:
-            weights = [
-                weight if weight > 0 else DEFAULT_LABEL_WEIGHT
-                for weight in np.log(
-                    class_weight.compute_class_weight(
-                        "balanced",
-                        classes=np.array(list(unique_tag_ids)),
-                        y=all_ner_tag_ids,
+            if self.arguments.log_class_weight:
+                weights = [
+                    weight if weight > 0 else DEFAULT_LABEL_WEIGHT
+                    for weight in np.log(
+                        class_weight.compute_class_weight(
+                            "balanced",
+                            classes=np.array(list(unique_tag_ids)),
+                            y=all_ner_tag_ids,
+                        )
                     )
-                )
-            ] * torch.cuda.device_count()
+                ] * torch.cuda.device_count()
+            else:
+                weights = class_weight.compute_class_weight(
+                    "balanced",
+                    classes=np.array(list(unique_tag_ids)),
+                    y=all_ner_tag_ids,
+                ).tolist() * torch.cuda.device_count()
             logger.info(
                 "class weights: %s, id2label: %s",
                 ", ".join([f"{round(weight, 2)}" for weight in weights]),
@@ -615,6 +631,8 @@ class NERTrainingPipeline:
         # self.classifier.load_state_dict(self.best_state_dict)
         # self.classifier.save_pretrained(self.arguments.model_storage_dir)
 
+
+        self.model_config.architectures = [self.model_class]
         self.model_config.save_pretrained(self.arguments.model_storage_dir)
         torch.save(
             self.best_state_dict,
