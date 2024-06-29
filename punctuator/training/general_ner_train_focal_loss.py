@@ -96,6 +96,7 @@ class NERTrainingArguments(BaseModel):
     plot_steps: int = 50
     tensorboard_log_dir: Optional[str] = "runs"
     use_class_weight: bool = True
+    log_class_weight: bool = True
 
     # model args
     additional_model_config: Optional[Dict]
