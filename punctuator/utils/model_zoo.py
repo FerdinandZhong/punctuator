@@ -86,5 +86,5 @@ class Models(Enum):
         RotaryBertConfig,
         BertTokenizerFast,
         RoFormerFocalLossForTokenClassification,
-        RoFormerModel,
+        BertModel,
     )
