@@ -1,21 +1,24 @@
+from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
+from torch import nn
 from transformers.modeling_outputs import TokenClassifierOutput
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.bert.modeling_bert import (
     BertAttention,
     BertEncoder,
+    BertForPreTraining,
+    BertForPreTrainingOutput,
     BertForTokenClassification,
-    BertIntermediate,
     BertLayer,
+    BertLMPredictionHead,
     BertModel,
-    BertOutput,
-    BertPooler,
     BertSelfAttention,
 )
 from transformers.models.roformer.modeling_roformer import *
+from transformers.utils import ModelOutput
 
 
 class RotaryBertConfig(BertConfig):
@@ -66,7 +69,7 @@ class RotaryBertConfig(BertConfig):
 class RotaryBertSelfAttention(BertSelfAttention):
     def __init__(self, config, bert_self_attention=None):
         super().__init__(config)
-        
+
         if bert_self_attention is not None:
             # reuse the trained weights
             self.query = bert_self_attention.query
@@ -74,7 +77,7 @@ class RotaryBertSelfAttention(BertSelfAttention):
             self.value = bert_self_attention.value
 
             self.dropout = bert_self_attention.dropout
-        
+
         self.is_decoder = config.is_decoder
         self.rotary_value = config.rotary_value
 
@@ -110,8 +113,10 @@ class RotaryBertSelfAttention(BertSelfAttention):
             value_layer = self.transpose_for_scores(self.value(hidden_states))
             if sinusoidal_pos is not None:
                 if self.rotary_value:
-                    query_layer, key_layer, value_layer = self.apply_rotary_position_embeddings(
-                        sinusoidal_pos, query_layer, key_layer, value_layer
+                    query_layer, key_layer, value_layer = (
+                        self.apply_rotary_position_embeddings(
+                            sinusoidal_pos, query_layer, key_layer, value_layer
+                        )
                     )
                 else:
                     query_layer, key_layer, _ = self.apply_rotary_position_embeddings(
@@ -122,7 +127,7 @@ class RotaryBertSelfAttention(BertSelfAttention):
                 value_layer = torch.cat([past_key_value[1], value_layer], dim=2)
         if self.is_decoder:
             past_key_value = (key_layer, value_layer)
-        
+
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
 
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
@@ -147,14 +152,18 @@ class RotaryBertSelfAttention(BertSelfAttention):
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
 
-        outputs = (context_layer, attention_probs) if output_attentions else (context_layer,)
+        outputs = (
+            (context_layer, attention_probs) if output_attentions else (context_layer,)
+        )
 
         if self.is_decoder:
             outputs = outputs + (past_key_value,)
         return outputs
 
     @staticmethod
-    def apply_rotary_position_embeddings(sinusoidal_pos, query_layer, key_layer, value_layer=None):
+    def apply_rotary_position_embeddings(
+        sinusoidal_pos, query_layer, key_layer, value_layer=None
+    ):
         # https://kexue.fm/archives/8265
         # sin [batch_size, num_heads, sequence_length, embed_size_per_head//2]
         # cos [batch_size, num_heads, sequence_length, embed_size_per_head//2]
@@ -164,21 +173,24 @@ class RotaryBertSelfAttention(BertSelfAttention):
         # cos [θ0,θ1,θ2......θd/2-1] -> cos_pos [θ0,θ0,θ1,θ1,θ2,θ2......θd/2-1,θd/2-1]
         cos_pos = torch.stack([cos, cos], dim=-1).reshape_as(sinusoidal_pos)
         # rotate_half_query_layer [-q1,q0,-q3,q2......,-qd-1,qd-2]
-        rotate_half_query_layer = torch.stack([-query_layer[..., 1::2], query_layer[..., ::2]], dim=-1).reshape_as(
-            query_layer
-        )
+        rotate_half_query_layer = torch.stack(
+            [-query_layer[..., 1::2], query_layer[..., ::2]], dim=-1
+        ).reshape_as(query_layer)
         query_layer = query_layer * cos_pos + rotate_half_query_layer * sin_pos
         # rotate_half_key_layer [-k1,k0,-k3,k2......,-kd-1,kd-2]
-        rotate_half_key_layer = torch.stack([-key_layer[..., 1::2], key_layer[..., ::2]], dim=-1).reshape_as(key_layer)
+        rotate_half_key_layer = torch.stack(
+            [-key_layer[..., 1::2], key_layer[..., ::2]], dim=-1
+        ).reshape_as(key_layer)
         key_layer = key_layer * cos_pos + rotate_half_key_layer * sin_pos
         if value_layer is not None:
             # rotate_half_value_layer [-v1,v0,-v3,v2......,-vd-1,vd-2]
-            rotate_half_value_layer = torch.stack([-value_layer[..., 1::2], value_layer[..., ::2]], dim=-1).reshape_as(
-                value_layer
-            )
+            rotate_half_value_layer = torch.stack(
+                [-value_layer[..., 1::2], value_layer[..., ::2]], dim=-1
+            ).reshape_as(value_layer)
             value_layer = value_layer * cos_pos + rotate_half_value_layer * sin_pos
             return query_layer, key_layer, value_layer
         return query_layer, key_layer, None
+
 
 class RotaryBertAttention(BertAttention):
     def __init__(self, config, bert_attention=None):
@@ -210,7 +222,9 @@ class RotaryBertAttention(BertAttention):
             output_attentions,
         )
         attention_output = self.output(self_outputs[0], hidden_states)
-        outputs = (attention_output,) + self_outputs[1:]  # add attentions if we output them
+        outputs = (attention_output,) + self_outputs[
+            1:
+        ]  # add attentions if we output them
         return outputs
 
 
@@ -223,10 +237,11 @@ class RotaryBertLayer(BertLayer):
             self.attention = RotaryBertAttention(config)
         if self.add_cross_attention:
             if not self.is_decoder:
-                raise ValueError(f"{self} should be used as a decoder model if cross attention is added")
+                raise ValueError(
+                    f"{self} should be used as a decoder model if cross attention is added"
+                )
             self.crossattention = RotaryBertAttention(config)
-        
-        
+
     def forward(
         self,
         hidden_states,
@@ -432,7 +447,7 @@ class RotaryBertModel(BertModel):
             self.encoder = RotaryBertEncoder(config, backbone_model.encoder.layer)
         else:
             self.encoder = RotaryBertEncoder(config)
-    
+
     def forward(
         self,
         input_ids: Optional[torch.LongTensor] = None,
@@ -467,11 +482,19 @@ class RotaryBertModel(BertModel):
             If set to `True`, `past_key_values` key value states are returned and can be used to speed up decoding (see
             `past_key_values`).
         """
-        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        output_attentions = (
+            output_attentions
+            if output_attentions is not None
+            else self.config.output_attentions
         )
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        output_hidden_states = (
+            output_hidden_states
+            if output_hidden_states is not None
+            else self.config.output_hidden_states
+        )
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
 
         if self.config.is_decoder:
             use_cache = use_cache if use_cache is not None else self.config.use_cache
@@ -479,7 +502,9 @@ class RotaryBertModel(BertModel):
             use_cache = False
 
         if input_ids is not None and inputs_embeds is not None:
-            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
+            raise ValueError(
+                "You cannot specify both input_ids and inputs_embeds at the same time"
+            )
         elif input_ids is not None:
             self.warn_if_padding_and_no_attention_mask(input_ids, attention_mask)
             input_shape = input_ids.size()
@@ -492,25 +517,35 @@ class RotaryBertModel(BertModel):
         device = input_ids.device if input_ids is not None else inputs_embeds.device
 
         # past_key_values_length
-        past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
+        past_key_values_length = (
+            past_key_values[0][0].shape[2] if past_key_values is not None else 0
+        )
 
         if attention_mask is None:
-            attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
+            attention_mask = torch.ones(
+                ((batch_size, seq_length + past_key_values_length)), device=device
+            )
         if token_type_ids is None:
             token_type_ids = torch.zeros(input_shape, dtype=torch.long, device=device)
 
         # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
         # ourselves in which case we just need to make it broadcastable to all heads.
-        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(attention_mask, input_shape)
+        extended_attention_mask: torch.Tensor = self.get_extended_attention_mask(
+            attention_mask, input_shape
+        )
 
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
         if self.config.is_decoder and encoder_hidden_states is not None:
-            encoder_batch_size, encoder_sequence_length, _ = encoder_hidden_states.size()
+            encoder_batch_size, encoder_sequence_length, _ = (
+                encoder_hidden_states.size()
+            )
             encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
             if encoder_attention_mask is None:
                 encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
-            encoder_extended_attention_mask = self.invert_attention_mask(encoder_attention_mask)
+            encoder_extended_attention_mask = self.invert_attention_mask(
+                encoder_attention_mask
+            )
         else:
             encoder_extended_attention_mask = None
 
@@ -522,7 +557,9 @@ class RotaryBertModel(BertModel):
         head_mask = self.get_head_mask(head_mask, self.config.num_hidden_layers)
 
         embedding_output = self.embeddings(
-            input_ids=input_ids, token_type_ids=token_type_ids, inputs_embeds=inputs_embeds
+            input_ids=input_ids,
+            token_type_ids=token_type_ids,
+            inputs_embeds=inputs_embeds,
         )
 
         encoder_outputs = self.encoder(
@@ -549,6 +586,7 @@ class RotaryBertModel(BertModel):
             attentions=encoder_outputs.attentions,
             cross_attentions=encoder_outputs.cross_attentions,
         )
+
 
 class RoFormerFocalLossForTokenClassification(BertForTokenClassification):
 
@@ -613,6 +651,129 @@ class RoFormerFocalLossForTokenClassification(BertForTokenClassification):
         return TokenClassifierOutput(
             loss=loss,
             logits=logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+
+
+@dataclass
+class PreTrainingOutput(ModelOutput):
+    loss: Optional[torch.FloatTensor] = None
+    prediction_logits: torch.FloatTensor = None
+    punct_count_prediction_logits: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+
+class PreTrainingHeads(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.predictions = BertLMPredictionHead(config)
+        self.punct_count_predictions = nn.Linear(config.hidden_size, 3)
+
+    def forward(self, sequence_output, pooled_output):
+        prediction_scores = self.predictions(sequence_output)
+        punctuation_count = self.punct_count_predictions(pooled_output)
+        return prediction_scores, punctuation_count
+
+
+class RotaryBertForPreTraining(BertForPreTraining):
+    def __init__(self, config, backbone_model=None):
+        super().__init__(config)
+
+        if backbone_model is not None:
+            self.bert = RotaryBertModel(config, backbone_model=backbone_model)
+        else:
+            self.bert = RotaryBertModel(config)
+
+        self.cls = PreTrainingHeads(config)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        token_type_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        punctuation_count_label: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+    ) -> Union[Tuple[torch.Tensor], BertForPreTrainingOutput]:
+        """
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
+            config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked),
+            the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
+        punctuation_count_label (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+            Labels for computing the count of the punctuations in the text (classification) loss.
+            Input should be a sequence pair. Indices should be in `[0, 1, 2]`:
+
+            - 0 indicates no punctuation in the text.
+            - 1 indicates only single punctuation in the text
+            - 2 indicates more than one punctuations in the text
+
+        kwargs (`Dict[str, any]`, optional, defaults to *{}*):
+            Used to hide legacy arguments that have been deprecated.
+
+        """
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
+
+        outputs = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        sequence_output, pooled_output = outputs[:2]
+        prediction_scores, punctuation_count = self.cls(sequence_output, pooled_output)
+
+        if labels is not None and punctuation_count_label is not None:
+            loss_fct = CrossEntropyLoss()
+            masked_lm_loss = loss_fct(
+                prediction_scores.view(-1, self.config.vocab_size), labels.view(-1)
+            )
+            next_sentence_loss = loss_fct(
+                punctuation_count.view(-1, 2), punctuation_count_label.view(-1)
+            )
+            total_loss = masked_lm_loss + next_sentence_loss
+
+        # masked_lm_loss, span_masked_lm_loss = None, None
+        # span_prediction_scores, prediction_scores = self.cls(sequence_output)
+        # span_masked_lm_loss = loss_fct(
+        #     span_prediction_scores.view(-1, 2), span_labels.view(-1)
+        # )
+        # if labels is not None:
+        #     masked_lm_loss = loss_fct(
+        #         prediction_scores.view(-1, self.config.vocab_size), labels.view(-1)
+        #     )
+
+        # final_masked_lm_loss = 0.5 * span_masked_lm_loss + 0.5 * masked_lm_loss
+        # if not return_dict:
+        #     output = (span_prediction_scores, prediction_scores) + outputs[2:]
+        #     return (
+        #         ((final_masked_lm_loss,) + output)
+        #         if masked_lm_loss is not None
+        #         else output
+        #     )
+
+        return PreTrainingOutput(
+            loss=total_loss,
+            prediction_logits=prediction_scores,
+            punct_count_prediction_logits=punctuation_count,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )

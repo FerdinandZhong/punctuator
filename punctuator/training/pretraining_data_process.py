@@ -1,4 +1,5 @@
 import logging
+import re
 from random import randint
 from typing import List, Union
 
@@ -8,9 +9,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-PAD_TOKEN = "[PAD]"
 logger = logging.getLogger(__name__)
-SENTENCE_ENDINGS = ["PERIOD", "QUESTION"]
 
 
 def _read_data(
@@ -28,7 +27,7 @@ def _read_data(
     if isinstance(source_data, List):
         pbar = tqdm(source_data)
     else:
-        with open(source_data, "r", encoding="utf-8") as data_file:
+        with open(source_data, "r") as data_file:
             pbar = tqdm(data_file.readlines())
     for index, line in enumerate(pbar):
         if line == "\n":
@@ -41,10 +40,11 @@ def _read_data(
         processed_line = read_line(line)
         try:
             assert len(processed_line) == 2, "bad line"
-            token, tag = processed_line
+            regex = re.compile("[^a-zA-Z0-9-+']")
+            token = regex.sub("", processed_line[0])
             if token:
                 token_doc.append(token)
-                tag_doc.append(tag)
+                tag_doc.append(processed_line[1])
         except AssertionError:
             logger.warning(f"ignore the bad line: {line}, index: {index}")
             continue
