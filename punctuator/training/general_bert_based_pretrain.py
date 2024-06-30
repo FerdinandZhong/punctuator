@@ -454,28 +454,26 @@ class PreTrainingPipeline:
     def _all_mask(self, input_ids_all):
         masked_input_ids_all = input_ids_all.detach().clone()
         rand = torch.rand(input_ids_all.shape)
-        with tqdm(
-            total=input_ids_all.shape[0], disable=self.arguments.is_dynamic_mask
-        ) as pbar:
-            index = 0
-            for input_ids in input_ids_all:
-                valuable_input_ids = (
-                    (input_ids != self.tokenizer.cls_token_id)
-                    * (input_ids != self.tokenizer.sep_token_id)
-                    * (input_ids != self.tokenizer.pad_token_id)
-                ).bool()
-                all_valuable_input_ids_index = valuable_input_ids.nonzero().squeeze()
-                rand = torch.rand(all_valuable_input_ids_index.shape[0])
-                mask_arr = rand < self.arguments.mask_rate
-                selection_index = all_valuable_input_ids_index[
-                    torch.flatten((mask_arr).nonzero()).tolist()
-                ]
+    
+        index = 0
+        for input_ids in input_ids_all:
+            valuable_input_ids = (
+                (input_ids != self.tokenizer.cls_token_id)
+                * (input_ids != self.tokenizer.sep_token_id)
+                * (input_ids != self.tokenizer.pad_token_id)
+            ).bool()
+            all_valuable_input_ids_index = valuable_input_ids.nonzero().squeeze()
+            rand = torch.rand(all_valuable_input_ids_index.shape[0])
+            mask_arr = rand < self.arguments.mask_rate
+            selection_index = all_valuable_input_ids_index[
+                torch.flatten((mask_arr).nonzero()).tolist()
+            ]
 
-                masked_input_ids_all[index, selection_index] = (
-                    self.tokenizer.mask_token_id
-                )
-                index += 1
-                pbar.update(1)
+            masked_input_ids_all[index, selection_index] = (
+                self.tokenizer.mask_token_id
+            )
+            index += 1
+
         return masked_input_ids_all
 
     def train(self):
@@ -637,7 +635,7 @@ class PreTrainingPipeline:
                 pbar.set_description(f"Processing batch: {in_epoch_steps}")
 
                 optim.zero_grad()
-                input_ids = batch["input_ids"].to(self.device)
+                input_ids = self._all_mask(batch["input_ids"]).to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
                 labels = batch["labels"].to(self.device)
                 punctuation_count_label = batch["punctuation_count_label"].to(
