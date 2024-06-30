@@ -2,7 +2,6 @@ import argparse
 import json
 import logging
 import os
-import random
 import time
 from typing import Dict, List, Optional
 
@@ -274,7 +273,8 @@ class NERTrainingArguments(BaseModel):
         training_tags = [[label2id[tag] for tag in doc] for doc in training_tags]
         validation_tags = [[label2id[tag] for tag in doc] for doc in validation_tags]
 
-        logger.info(f"Corpus Sample: {random.choice([training_corpus])}")
+        sample = training_corpus[0]
+        logger.info("Corpus Sample: %s", sample)
 
         return (
             training_corpus,
