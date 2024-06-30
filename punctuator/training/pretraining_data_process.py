@@ -24,11 +24,7 @@ def _read_data(
 
     token_doc = []
     punctuation_count = 0
-    punct_count_samples_num = {
-        0: 0,
-        1: 0,
-        2: 0
-    }
+    punct_count_samples_num = {0: 0, 1: 0, 2: 0}
 
     if isinstance(source_data, List):
         pbar = tqdm(source_data)
@@ -80,7 +76,7 @@ def _read_data(
         logger.warning("error generating sequence: %s", token_doc)
 
     pbar.close()
-    
+
     logger.info("total zero punct samples: %d", punct_count_samples_num[0])
     logger.info("total single punct samples: %d", punct_count_samples_num[1])
     logger.info("total multiple punct samples: %d", punct_count_samples_num[2])

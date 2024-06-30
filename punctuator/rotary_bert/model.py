@@ -1,10 +1,17 @@
+import logging
+import math
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
 from torch import nn
-from transformers.modeling_outputs import TokenClassifierOutput
+from torch.nn import CrossEntropyLoss
+from transformers.modeling_outputs import (
+    BaseModelOutputWithPastAndCrossAttentions,
+    BaseModelOutputWithPoolingAndCrossAttentions,
+    TokenClassifierOutput,
+)
 from transformers.models.bert.configuration_bert import BertConfig
 from transformers.models.bert.modeling_bert import (
     BertAttention,
@@ -17,8 +24,14 @@ from transformers.models.bert.modeling_bert import (
     BertModel,
     BertSelfAttention,
 )
-from transformers.models.roformer.modeling_roformer import *
+from transformers.models.roformer.modeling_roformer import (
+    RoFormerEmbeddings,
+    RoFormerSinusoidalPositionalEmbedding,
+)
+from transformers.pytorch_utils import apply_chunking_to_forward
 from transformers.utils import ModelOutput
+
+logger = logging.getLogger(__name__)
 
 
 class RotaryBertConfig(BertConfig):
@@ -575,12 +588,16 @@ class RotaryBertModel(BertModel):
             return_dict=return_dict,
         )
         sequence_output = encoder_outputs[0]
+        pooled_output = (
+            self.pooler(sequence_output) if self.pooler is not None else None
+        )
 
         if not return_dict:
-            return (sequence_output,) + encoder_outputs[1:]
+            return (sequence_output, pooled_output) + encoder_outputs[1:]
 
-        return BaseModelOutputWithPastAndCrossAttentions(
+        return BaseModelOutputWithPoolingAndCrossAttentions(
             last_hidden_state=sequence_output,
+            pooler_output=pooled_output,
             past_key_values=encoder_outputs.past_key_values,
             hidden_states=encoder_outputs.hidden_states,
             attentions=encoder_outputs.attentions,
