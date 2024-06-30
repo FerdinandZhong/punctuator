@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -82,8 +82,8 @@ class PreTrainingArguments(BaseModel):
     # basic args
     training_corpus: List[List[str]]
     training_punctuation_counts: List[List[int]]
-    validation_tags: List[List[int]]
-    val_punctuation_counts: List[List[str]]
+    validation_corpus: List[List[str]]
+    val_punctuation_counts: List[List[int]]
     model_weight_name: str
     tokenizer_name: str
     model: Optional[Models] = Models.DISTILBERT
@@ -271,7 +271,8 @@ class PreTrainingArguments(BaseModel):
         ) = process_data(val_raw, args.min_sequence_length, args.max_sequence_length)
 
         sample = training_corpus[0]
-        logger.info("Corpus Sample: %s", sample)
+        logger.info("Corpus sample: %s", sample)
+        logger.info("Punct count sample: %s", training_punctuation_counts[0])
 
         return (
             training_corpus,

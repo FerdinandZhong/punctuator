@@ -13,7 +13,6 @@ training_args = parser.parse_args()
     validation_corpus,
     training_punctuation_counts,
     val_punctuation_counts,
-    label2id,
 ) = PreTrainingArguments.generate_corpus(training_args)
 
 training_args = PreTrainingArguments.from_cli_args(

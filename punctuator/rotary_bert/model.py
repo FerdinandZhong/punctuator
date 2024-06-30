@@ -196,7 +196,7 @@ class RotaryBertAttention(BertAttention):
     def __init__(self, config, bert_attention=None):
         super().__init__(config)
         if bert_attention is not None:
-            self.self = RotaryBertSelfAttention(config, bert_attention)
+            self.self = RotaryBertSelfAttention(config, bert_attention.self)
         else:
             self.self = RotaryBertSelfAttention(config)
 
@@ -696,7 +696,6 @@ class RotaryBertForPreTraining(BertForPreTraining):
         input_ids: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         token_type_ids: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
@@ -730,7 +729,6 @@ class RotaryBertForPreTraining(BertForPreTraining):
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
-            position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
             output_attentions=output_attentions,

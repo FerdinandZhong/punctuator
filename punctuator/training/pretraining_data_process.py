@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def _read_data(
     source_data, min_sequence_length, max_sequence_length
-) -> Union[List[List], List[str]]:
+) -> Union[List[List], List[List]]:
     def read_line(text_line):
         return text_line.strip().split("\t")
 
@@ -24,6 +24,11 @@ def _read_data(
 
     token_doc = []
     punctuation_count = 0
+    punct_count_samples_num = {
+        0: 0,
+        1: 0,
+        2: 0
+    }
 
     if isinstance(source_data, List):
         pbar = tqdm(source_data)
@@ -33,7 +38,7 @@ def _read_data(
     for index, line in enumerate(pbar):
         if line == "\n":
             token_docs.append(token_doc)
-            punctuation_counts.append(punctuation_count)
+            punctuation_counts.append([punctuation_count])
             pbar.update(len(token_doc))
             token_doc = []
             punctuation_count = 0
@@ -56,6 +61,7 @@ def _read_data(
             try:
                 _verify_senquence(token_doc, target_sequence_length)
                 token_docs.append(token_doc)
+                punct_count_samples_num[punctuation_count] += 1
                 punctuation_counts.append([punctuation_count])
                 token_doc = []
                 punctuation_count = 0
@@ -67,12 +73,17 @@ def _read_data(
             pbar.update(len(token_doc))
     try:
         token_docs.append(token_doc)
+        punct_count_samples_num[punctuation_count] += 1
         punctuation_counts.append([punctuation_count])
         pbar.update(len(token_doc))
     except AssertionError:
         logger.warning("error generating sequence: %s", token_doc)
 
     pbar.close()
+    
+    logger.info("total zero punct samples: %d", punct_count_samples_num[0])
+    logger.info("total single punct samples: %d", punct_count_samples_num[1])
+    logger.info("total multiple punct samples: %d", punct_count_samples_num[2])
 
     return token_docs, punctuation_counts
 
