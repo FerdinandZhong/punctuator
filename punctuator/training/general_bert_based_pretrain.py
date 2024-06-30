@@ -102,8 +102,7 @@ class PreTrainingArguments(BaseModel):
     r_alpha: float = 0
     plot_steps: int = 50
     tensorboard_log_dir: Optional[str] = "runs"
-    use_class_weight: bool = True
-    log_class_weight: bool = True
+    mask_rate: float = 0.15
 
     # model args
     additional_model_config: Optional[Dict]
@@ -225,16 +224,10 @@ class PreTrainingArguments(BaseModel):
         )
 
         parser.add_argument(
-            "--use_class_weight",
-            type=str2bool,
-            default=True,
-            help="Whether to assign weights to classes",
-        )
-        parser.add_argument(
-            "--log_class_weight",
-            type=str2bool,
-            default=True,
-            help="Whether to assign weights to classes",
+            "--mask_rate",
+            type=float,
+            default=0.15,
+            help="Masking rate",
         )
         # Model-specific arguments
         parser.add_argument(
@@ -320,8 +313,7 @@ class PreTrainingArguments(BaseModel):
             tensorboard_log_dir=args.tensorboard_log_dir,
             plot_steps=args.plot_steps,
             early_stop_count=args.early_stop_count,
-            use_class_weight=args.use_class_weight,
-            log_class_weight=args.log_class_weight,
+            mask_rate=args.mask_rate,
             additional_tokenizer_config=additional_tokenizer_config,
         )
 
