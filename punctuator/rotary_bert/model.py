@@ -762,7 +762,7 @@ class RotaryBertForPreTraining(BertForPreTraining):
                 prediction_scores.view(-1, self.config.vocab_size), labels.view(-1)
             )
             punct_count_loss = loss_fct(
-                punctuation_count.view(-1, 2), punctuation_count_label.view(-1)
+                punctuation_count.view(-1, 3), punctuation_count_label.view(-1)
             )
             total_loss = masked_lm_loss + punct_count_loss
 
