@@ -24,8 +24,9 @@ from punctuator.pykan.model import (
     BertKanForTokenClassificationFocalLoss,
 )
 from punctuator.rotary_bert.model import (
-    RoFormerFocalLossForTokenClassification,
     RotaryBertConfig,
+    RotaryBertFocalLossForTokenClassification,
+    RotaryBertForPreTraining,
 )
 
 ModelCollection = namedtuple(
@@ -84,6 +85,13 @@ class Models(Enum):
     ROFORMER_FOCAL_LOSS = ModelCollection(
         RotaryBertConfig,
         BertTokenizerFast,
-        RoFormerFocalLossForTokenClassification,
+        RotaryBertFocalLossForTokenClassification,
+        BertModel,
+    )
+
+    ROFORMER_PRETRAIN = ModelCollection(
+        RotaryBertConfig,
+        BertTokenizerFast,
+        RotaryBertForPreTraining,
         BertModel,
     )

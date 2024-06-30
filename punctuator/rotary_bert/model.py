@@ -588,7 +588,7 @@ class RotaryBertModel(BertModel):
         )
 
 
-class RoFormerFocalLossForTokenClassification(BertForTokenClassification):
+class RotaryBertFocalLossForTokenClassification(BertForTokenClassification):
 
     def __init__(self, config, backbone_model: BertModel = None):
         super().__init__(config)

@@ -7,48 +7,57 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from pydantic import BaseModel
-from sklearn.metrics import classification_report
-from sklearn.utils import class_weight
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from transformers import AdamW, get_constant_schedule_with_warmup
 
-from punctuator.focal_loss.focal_loss import FocalLoss
-from punctuator.utils import NORMAL_TOKEN_TAG, Models, model_type, str2bool
+from punctuator.utils import Models, model_type, str2bool
 
-from .finetuning_data_process import process_data
+from .pretraining_data_process import process_data
 
 logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 0.1
-DEFAULT_LABEL2ID = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
 
 
-class EncodingDataset:
-    def __init__(self, encodings, labels):
+class EncodingDataset(Dataset):
+    def __init__(self, encodings, punctuation_counts, labels=None):
         self.encodings = encodings
+        self.punctuation_counts = punctuation_counts
         self.labels = labels
 
     def __getitem__(self, idx):
-        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
-        item["labels"] = torch.tensor(self.labels[idx])
+        # following the BERT's original pretraining method
+        item = {
+            key: val[idx] if torch.is_tensor(val[idx]) else torch.tensor(val[idx])
+            for key, val in self.encodings.items()
+        }
+        item["punctuation_count_label"] = torch.tensor(
+            self.punctuation_counts[idx]
+        ).type(torch.LongTensor)
+
+        if self.labels is not None:
+            item["labels"] = (
+                self.labels[idx]
+                if torch.is_tensor(self.labels[idx])
+                else torch.tensor(self.labels[idx]).type(torch.LongTensor)
+            )
         return item
 
     def __len__(self):
-        return len(self.labels)
+        return len(self.punctuation_counts)
 
 
-class NERTrainingArguments(BaseModel):
-    """Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
+class PreTrainingArguments(BaseModel):
+    """Arguments for further PreTraining of Bert-based model
 
     Args:
         # basic arguments
         training_corpus(List[List[str]]): list of sequences for training, longest sequence should be no longer than pretrained LM # noqa: E501
         validation_corpus(List[List[str]]): list of sequences for validation, longest sequence should be no longer than pretrained LM # noqa: E501
-        training_tags(List[List[int]]): tags(int) for training
-        validation_tags(List[List[int]]): tags(int) for validation
+        training_punctuation_counts(List[List[int]]): punctuation count in each text for training
+        val_punctuation_counts(List[List[int]]):  punctuation count in each text for validation
         model(Optional(enum)): model selected from Enum Models, default is "DISTILBERT"
         model_weight_name(str): name or path of pre-trained model weight
         tokenizer_name(str): name of pretrained tokenizer
@@ -57,7 +66,6 @@ class NERTrainingArguments(BaseModel):
         epoch(int): number of epoch
         batch_size(int): batch size
         model_storage_dir(str): fine-tuned model storage path
-        label2id(Dict): the tags label and id mapping
         early_stop_count(int): after how many epochs to early stop training if valid loss not become smaller. default 3 # noqa: E501
         use_gpu(Optional[bool]): whether to use gpu for training, default is "True"
         gpu_device(Optional[int]): specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
@@ -73,9 +81,9 @@ class NERTrainingArguments(BaseModel):
 
     # basic args
     training_corpus: List[List[str]]
-    validation_corpus: List[List[str]]
-    training_tags: List[List[int]]
+    training_punctuation_counts: List[List[int]]
     validation_tags: List[List[int]]
+    val_punctuation_counts: List[List[str]]
     model_weight_name: str
     tokenizer_name: str
     model: Optional[Models] = Models.DISTILBERT
@@ -86,7 +94,6 @@ class NERTrainingArguments(BaseModel):
     batch_size: int
     model_storage_dir: str
     intermediate_persist_step: int = 5
-    label2id: Dict
     early_stop_count: Optional[int] = 3
     use_gpu: Optional[bool] = True
     gpu_device: Optional[int] = os.environ.get("CUDA_VISIBLE_DEVICES", 0)
@@ -124,7 +131,7 @@ class NERTrainingArguments(BaseModel):
             "--min_sequence_length",
             type=int,
             required=True,
-            default=32,
+            default=8,
             help="Minimum sequence length (count of the words) in each sample.",
         )
         parser.add_argument(
@@ -167,9 +174,6 @@ class NERTrainingArguments(BaseModel):
             type=str,
             required=True,
             help="Path to store the fine-tuned model",
-        )
-        parser.add_argument(
-            "--label2id", type=str, required=True, help="Label to ID mapping"
         )
         parser.add_argument(
             "--early_stop_count",
@@ -256,29 +260,24 @@ class NERTrainingArguments(BaseModel):
 
         (
             training_corpus,
-            training_tags,
+            training_punctuation_counts,
         ) = process_data(
             training_raw, args.min_sequence_length, args.max_sequence_length
         )
 
         (
             validation_corpus,
-            validation_tags,
+            val_punctuation_counts,
         ) = process_data(val_raw, args.min_sequence_length, args.max_sequence_length)
 
-        try:
-            label2id = json.loads(args.label2id)
-        except json.JSONDecodeError:
-            label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
-        training_tags = [[label2id[tag] for tag in doc] for doc in training_tags]
-        validation_tags = [[label2id[tag] for tag in doc] for doc in validation_tags]
+        sample = training_corpus[0]
+        logger.info("Corpus Sample: %s", sample)
 
         return (
             training_corpus,
             validation_corpus,
-            training_tags,
-            validation_tags,
-            label2id,
+            training_punctuation_counts,
+            val_punctuation_counts,
         )
 
     @classmethod
@@ -287,9 +286,8 @@ class NERTrainingArguments(BaseModel):
         args: argparse.Namespace,
         training_corpus: List[List[str]],
         validation_corpus: List[List[str]],
-        training_tags: List[List[int]],
-        validation_tags: List[List[int]],
-        label2id: Dict,
+        training_punctuation_counts: List[List[int]],
+        val_punctuation_counts: List[List[int]],
     ):
         try:
             additional_model_config = json.loads(args.additional_model_config)
@@ -303,8 +301,8 @@ class NERTrainingArguments(BaseModel):
         training_pipeline_args = cls(
             training_corpus=training_corpus,
             validation_corpus=validation_corpus,
-            training_tags=training_tags,
-            validation_tags=validation_tags,
+            training_punctuation_counts=training_punctuation_counts,
+            val_punctuation_counts=val_punctuation_counts,
             model=model_type(args.model),
             load_backbone_only=args.load_backbone_only,
             model_weight_name=args.model_weight_name,
@@ -320,7 +318,6 @@ class NERTrainingArguments(BaseModel):
             r_alpha=args.r_alpha,
             tensorboard_log_dir=args.tensorboard_log_dir,
             plot_steps=args.plot_steps,
-            label2id=label2id,
             early_stop_count=args.early_stop_count,
             use_class_weight=args.use_class_weight,
             log_class_weight=args.log_class_weight,
@@ -330,32 +327,21 @@ class NERTrainingArguments(BaseModel):
         return training_pipeline_args
 
 
-class NERTrainingPipeline:
+class PreTrainingPipeline:
     def __init__(self, training_arguments):
-        """Training pipeline for fine-tuning the distilbert token classifier for punctuation
+        """PreTraining pipeline
 
         Args:
-            training_arguments (TrainingArguments): arguments passed to training pipeline
+            training_arguments (PreTrainingArguments): arguments passed to training pipeline
         """
         self.arguments = training_arguments
         logger.info("cuda available: %s", torch.cuda.is_available())
-        if torch.cuda.is_available():
-            self.world_size = torch.cuda.device_count()
-        else:
-            self.world_size = 1
-
-        self.label2id = training_arguments.label2id
-        self.id2label = {id: label for label, id in self.label2id.items()}
         self.tensorboard_writter = SummaryWriter(training_arguments.tensorboard_log_dir)
 
         model_collection = training_arguments.model.value
 
-        self.num_labels = len(self.id2label)
         self.model_config = model_collection.config.from_pretrained(
             training_arguments.model_weight_name,
-            label2id=self.label2id,
-            id2label=self.id2label,
-            num_labels=self.num_labels,
             **training_arguments.additional_model_config,
         )
 
@@ -370,29 +356,28 @@ class NERTrainingPipeline:
                 training_arguments.model_weight_name,
                 config=self.model_config,
             )
-            self.classifier = model_collection.model(
+            self.full_model = model_collection.model(
                 self.model_config, backbone_model=backbone_model
             )
 
         else:
-            self.classifier = model_collection.model.from_pretrained(
+            self.full_model = model_collection.model.from_pretrained(
                 training_arguments.model_weight_name,
                 config=self.model_config,
             )
 
-        self.model_class = self.classifier.__class__.__name__
-        self.classifier.set_loss_fct(FocalLoss())
+        self.model_class = self.full_model.__class__.__name__
         logger.info("model loaded")
 
         if torch.cuda.is_available() and training_arguments.use_gpu:
             if torch.cuda.device_count() > 1:
-                self.classifier = torch.nn.DataParallel(self.classifier)
-                self.classifier.cuda()
+                self.full_model = torch.nn.DataParallel(self.full_model)
+                self.full_model.cuda()
                 self.device = torch.device("cuda")
                 self.is_parallel = True
             else:
                 self.device = torch.device(f"cuda:{training_arguments.gpu_device}")
-                self.classifier.to(self.device)
+                self.full_model.to(self.device)
                 self.is_parallel = False
 
         else:
@@ -401,9 +386,11 @@ class NERTrainingPipeline:
 
         self.total_steps = 0
         self.class_weights = None
-        self.train_encoded_tags = None
-        self.validation_encoded_tags = None
-        self.train_encodings = None
+        self.training_punctuation_counts = None
+        self.val_punctuation_counts = None
+        self.training_token_labels = None
+        self.val_token_labels = None
+        self.training_encodings = None
         self.val_encodings = None
         self.training_dataset = None
         self.val_dataset = None
@@ -419,7 +406,7 @@ class NERTrainingPipeline:
         """  # noqa E501
         logger.info("tokenize data")
 
-        self.train_encodings = self.tokenizer(
+        self.training_encodings = self.tokenizer(
             self.arguments.training_corpus,
             is_split_into_words=True,
             return_offsets_mapping=True,
@@ -432,59 +419,11 @@ class NERTrainingPipeline:
             padding=True,
         )
 
-        all_ner_tag_ids = [
-            tag_id
-            for sen_tag_ids in self.arguments.training_tags
-            + self.arguments.validation_tags
-            for tag_id in sen_tag_ids
-        ]
-        unique_tag_ids = set(all_ner_tag_ids)
+        self.training_punctuation_counts = self.arguments.training_punctuation_counts
+        self.val_punctuation_counts = self.arguments.val_punctuation_counts
 
-        logger.info("unique tag ids: %s, id2label: %s", unique_tag_ids, self.id2label)
-
-        if self.arguments.use_class_weight:
-            if self.arguments.log_class_weight:
-                weights = [
-                    weight if weight > 0 else DEFAULT_LABEL_WEIGHT
-                    for weight in np.log(
-                        class_weight.compute_class_weight(
-                            "balanced",
-                            classes=np.array(list(unique_tag_ids)),
-                            y=all_ner_tag_ids,
-                        )
-                    )
-                ] * torch.cuda.device_count()
-            else:
-                weights = (
-                    class_weight.compute_class_weight(
-                        "balanced",
-                        classes=np.array(list(unique_tag_ids)),
-                        y=all_ner_tag_ids,
-                    ).tolist()
-                    * torch.cuda.device_count()
-                )
-            logger.info(
-                "class weights: %s, id2label: %s",
-                ", ".join([f"{round(weight, 2)}" for weight in weights]),
-                self.id2label,
-            )
-            self.class_weights = torch.tensor(weights, dtype=torch.float).to(
-                self.device
-            )
-            logger.info("class weights tensor: %s", self.class_weights)
-        else:
-            self.class_weights = None
-
-        self.train_encoded_tags = self._encode_tags(
-            self.arguments.training_tags,
-            self.train_encodings,
-            self.arguments.training_corpus,
-        )
-        self.validation_encoded_tags = self._encode_tags(
-            self.arguments.validation_tags,
-            self.val_encodings,
-            self.arguments.validation_corpus,
-        )
+        self.training_token_labels = self.training_encodings.input_ids
+        self.val_token_labels = self.val_encodings.input_ids
 
         return self
 
@@ -498,19 +437,48 @@ class NERTrainingPipeline:
             self: The instance of the class itself for method chaining.
         """  # noqa E 501
         logger.info("generate dataset from tokenized data")
-        self.train_encodings.pop("offset_mapping")
+        self.training_encodings.pop("offset_mapping")
         self.val_encodings.pop("offset_mapping")
         self.training_dataset = EncodingDataset(
-            self.train_encodings, self.train_encoded_tags
+            self.training_encodings,
+            self.training_punctuation_counts,
+            self.training_token_labels,
         )
         self.val_dataset = EncodingDataset(
-            self.val_encodings, self.validation_encoded_tags
+            self.val_encodings, self.val_punctuation_counts, self.val_token_labels
         )
 
         return self
 
-    def fine_tune(self):
-        logger.info("start fine tune")
+    def _all_mask(self, input_ids_all):
+        masked_input_ids_all = input_ids_all.detach().clone()
+        rand = torch.rand(input_ids_all.shape)
+        with tqdm(
+            total=input_ids_all.shape[0], disable=self.arguments.is_dynamic_mask
+        ) as pbar:
+            index = 0
+            for input_ids in input_ids_all:
+                valuable_input_ids = (
+                    (input_ids != self.tokenizer.cls_token_id)
+                    * (input_ids != self.tokenizer.sep_token_id)
+                    * (input_ids != self.tokenizer.pad_token_id)
+                ).bool()
+                all_valuable_input_ids_index = valuable_input_ids.nonzero().squeeze()
+                rand = torch.rand(all_valuable_input_ids_index.shape[0])
+                mask_arr = rand < self.arguments.mask_rate
+                selection_index = all_valuable_input_ids_index[
+                    torch.flatten((mask_arr).nonzero()).tolist()
+                ]
+
+                masked_input_ids_all[index, selection_index] = (
+                    self.tokenizer.mask_token_id
+                )
+                index += 1
+                pbar.update(1)
+        return masked_input_ids_all
+
+    def train(self):
+        logger.info("start training")
 
         train_loader = DataLoader(
             self.training_dataset, batch_size=self.arguments.batch_size, shuffle=True
@@ -518,14 +486,14 @@ class NERTrainingPipeline:
         val_loader = DataLoader(
             self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True
         )
-        optim = AdamW(self.classifier.parameters(), lr=1e-5)
+        optim = AdamW(self.full_model.parameters(), lr=1e-5)
 
         scheduler = get_constant_schedule_with_warmup(
             optim,
             num_warmup_steps=self.arguments.warm_up_steps,
         )
 
-        best_val_loss = 100
+        best_val_loss = float("inf")
         best_val_acc = 0
         no_improvement_count = 0
 
@@ -535,7 +503,7 @@ class NERTrainingPipeline:
 
                 start_time = time.time()
 
-                self.classifier.train()
+                self.full_model.train()
 
                 train_loss, train_acc = self._train(train_loader, optim, scheduler)
                 val_loss, val_acc = self._train(val_loader, optim, scheduler, True)
@@ -585,16 +553,16 @@ class NERTrainingPipeline:
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     if self.is_parallel:
-                        self.best_state_dict = self.classifier.module.state_dict()
+                        self.best_state_dict = self.full_model.module.bert.state_dict()
                     else:
-                        self.best_state_dict = self.classifier.state_dict()
+                        self.best_state_dict = self.full_model.bert.state_dict()
                     no_improvement_count = 0
                 elif val_acc > best_val_acc:
                     best_val_acc = val_acc
                     if self.is_parallel:
-                        self.best_acc_state_dict = self.classifier.module.state_dict()
+                        self.best_acc_state_dict = self.full_model.module.state_dict()
                     else:
-                        self.best_acc_state_dict = self.classifier.state_dict()
+                        self.best_acc_state_dict = self.full_model.state_dict()
                     no_improvement_count = 0
                 else:
                     no_improvement_count += 1
@@ -616,11 +584,11 @@ class NERTrainingPipeline:
 
     def _intermediate_persist(self, epoch_index):
         if self.is_parallel:
-            persist_moodel = self.classifier.module
+            persist_moodel = self.full_model.module
         else:
-            persist_moodel = self.classifier
+            persist_moodel = self.full_model
         torch.save(
-            persist_moodel.state_dict(),
+            persist_moodel.bert.state_dict(),
             os.path.join(
                 self.arguments.model_storage_dir,
                 f"epoch_{epoch_index}_pytorch_model.bin",
@@ -648,69 +616,21 @@ class NERTrainingPipeline:
             ),
         )
 
-        logger.info("fine-tuned model stored to %s", self.arguments.model_storage_dir)
-
-    def _encode_tags(self, tags, encodings, corpus):
-        logger.info("encoding tags")
-        encoded_labels = []
-        with tqdm(total=len(tags)) as pbar:
-            for doc_labels, doc_offset, sample in zip(
-                tags, encodings.offset_mapping, corpus
-            ):
-                try:
-                    # create an empty array of -100
-                    doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
-                    arr_offset = np.array(doc_offset)
-
-                    # set labels whose first offset position is 0 and the second is not 0
-                    doc_enc_labels[
-                        (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
-                    ] = doc_labels
-                    encoded_labels.append(doc_enc_labels.tolist())
-                except ValueError as e:
-                    logger.warning("error encoding: %s", str(e))
-                    logger.warning("tags: %s", doc_labels)
-                    logger.warning("sample: %s", sample)
-                    raise e
-                pbar.update(1)
-
-        return encoded_labels
-
-    def _compute_kl_loss(self, p, q, pad_mask=None):
-        p_loss = F.kl_div(
-            F.log_softmax(p, dim=-1), F.softmax(q, dim=-1), reduction="none"
+        logger.info(
+            "further pretrained model stored to %s", self.arguments.model_storage_dir
         )
-        q_loss = F.kl_div(
-            F.log_softmax(q, dim=-1),
-            F.softmax(p, dim=-1),
-            reduction="none",
-        )
-
-        # pad_mask is for seq-level tasks
-        if pad_mask is not None:
-            p_loss.masked_fill_(pad_mask, 0.0)
-            q_loss.masked_fill_(pad_mask, 0.0)
-
-        # # You can choose whether to use function "sum" and "mean" depending on your task
-        p_loss = p_loss.sum()
-        q_loss = q_loss.sum()
-
-        loss = (p_loss + q_loss) / 2
-        return loss
 
     def _train(self, iterator, optim, scheduler=None, is_val=False):
         epoch_loss = 0
         epoch_acc = 0
         if is_val:
-            self.classifier.train(False)
+            self.full_model.train(False)
         else:
-            self.classifier.train()
+            self.full_model.train()
 
         in_epoch_steps = 0
 
         with tqdm(total=len(iterator)) as pbar:
-            total_preds = []
-            total_labels = []
             for batch in iterator:
                 in_epoch_steps += 1
                 pbar.set_description(f"Processing batch: {in_epoch_steps}")
@@ -719,55 +639,18 @@ class NERTrainingPipeline:
                 input_ids = batch["input_ids"].to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
                 labels = batch["labels"].to(self.device)
+                punctuation_count_label = batch["punctuation_count_label"].to(
+                    self.device
+                )
 
-                if self.arguments.r_drop:
-                    outputs_1 = self.classifier(
-                        input_ids, attention_mask=attention_mask, labels=labels
-                    )
-                    logits_1 = outputs_1.logits
-                    if in_epoch_steps == 1:
-                        logger.info("logits shape %s", logits_1.size())
-                    logits_1_viewed = logits_1.view(-1, self.num_labels)
-                    if in_epoch_steps == 1:
-                        logger.info("viewed logits shape %s", logits_1_viewed.size())
-                    loss_1 = F.cross_entropy(
-                        logits_1_viewed,
-                        labels.view(-1),
-                        weight=self.class_weights,
-                        reduction="mean",
-                    )
-
-                    outputs_2 = self.classifier(
-                        input_ids, attention_mask=attention_mask, labels=labels
-                    )
-                    logits_2 = outputs_2.logits
-
-                    logits_2_viewed = logits_2.view(-1, self.num_labels)
-                    loss_2 = F.cross_entropy(
-                        logits_2_viewed,
-                        labels.view(-1),
-                        weight=self.class_weights,
-                        reduction="mean",
-                    )
-
-                    # cross entropy loss for classifier
-                    ce_loss = 0.5 * (loss_1 + loss_2)
-                    kl_loss = self._compute_kl_loss(logits_1, logits_2)
-
-                    # carefully choose hyper-parameters
-                    loss = ce_loss + self.arguments.r_alpha * kl_loss
-                    logits = logits_1.add(logits_2) / 2  # average over two logits
-
-                else:
-
-                    outputs = self.classifier(
-                        input_ids,
-                        attention_mask=attention_mask,
-                        labels=labels,
-                        class_weights=self.class_weights,
-                    )
-                    logits = outputs.logits
-                    loss = outputs.loss
+                outputs = self.full_model(
+                    input_ids,
+                    attention_mask=attention_mask,
+                    labels=labels,
+                    punctuation_count_label=punctuation_count_label,
+                )
+                prediction_logits = outputs.prediction_logits
+                loss = outputs.loss
 
                 if self.is_parallel:
                     loss = loss.mean()
@@ -781,17 +664,11 @@ class NERTrainingPipeline:
                         self.tensorboard_writter.add_scalar(
                             "Step Loss/train", loss, self.total_steps
                         )
-                else:
-                    true_preds, true_labels = self._post_process(
-                        logits, labels, attention_mask
-                    )
-                    total_preds.extend(true_preds)
-                    total_labels.extend(true_labels)
 
                 self.total_steps += 1
 
                 epoch_loss += loss.item()
-                epoch_acc += self._accuracy(logits, attention_mask, labels)
+                epoch_acc += self._accuracy(prediction_logits, labels)
 
                 pbar.update(1)
                 pbar.set_postfix(
@@ -801,23 +678,6 @@ class NERTrainingPipeline:
                     }
                 )
 
-            if is_val:
-                tested_labels = []
-                target_names = []
-                for label, label_id in self.label2id.items():
-                    if label != NORMAL_TOKEN_TAG:
-                        tested_labels.append(label_id)
-                        target_names.append(label)
-                report = classification_report(
-                    total_labels,
-                    total_preds,
-                    labels=tested_labels,
-                    digits=4,
-                    target_names=target_names,
-                    zero_division=1,
-                )
-                logger.info("validation report: \n %s", report)
-
         return epoch_loss / in_epoch_steps, epoch_acc / in_epoch_steps
 
     def _epoch_time(self, start_time, end_time):
@@ -826,43 +686,24 @@ class NERTrainingPipeline:
         elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
         return elapsed_mins, elapsed_secs
 
-    def _post_process(self, logits, labels, attention_mask):
+    def _accuracy(self, prediction_logits, labels):
         if self.device.type == "cuda":
-            max_preds = logits.argmax(dim=-1).detach().cpu().numpy().flatten()
+            max_preds = (
+                prediction_logits.argmax(dim=-1).detach().cpu().numpy().flatten()
+            )
             flattened_labels = labels.detach().cpu().numpy().flatten()
-            flattened_attention = attention_mask.detach().cpu().numpy().flatten()
         else:
-            max_preds = logits.argmax(dim=-1).detach().numpy().flatten()
+            max_preds = prediction_logits.argmax(dim=-1).detach().numpy().flatten()
             flattened_labels = labels.detach().numpy().flatten()
-            flattened_attention = attention_mask.detach().numpy().flatten()
-        not_padding_labels = flattened_labels[flattened_attention == 1]
-        not_padding_preds = max_preds[flattened_attention == 1]
-        reduce_ignored = not_padding_labels >= 0
-        true_labels = not_padding_labels[reduce_ignored]  # remove ignored -100
-        true_preds = not_padding_preds[reduce_ignored]
 
-        return true_preds, true_labels
-
-    def _accuracy(self, logits, attention_mask, labels):
-        if self.device.type == "cuda":
-            max_preds = logits.argmax(dim=-1).detach().cpu().numpy().flatten()
-            flattened_labels = labels.detach().cpu().numpy().flatten()
-            flattened_attention = attention_mask.detach().cpu().numpy().flatten()
-        else:
-            max_preds = logits.argmax(dim=-1).detach().numpy().flatten()
-            flattened_labels = labels.detach().numpy().flatten()
-            flattened_attention = attention_mask.detach().numpy().flatten()
-
-        not_padding_labels = flattened_labels[flattened_attention == 1]
-        not_padding_preds = max_preds[flattened_attention == 1]
-        reduce_ignored = not_padding_labels >= 0
-        true_labels = not_padding_labels[reduce_ignored]  # remove ignored -100
-        true_preds = not_padding_preds[reduce_ignored]
+        reduce_ignored = flattened_labels >= 0
+        true_preds = max_preds[reduce_ignored]  # remove ignored -100
+        true_labels = flattened_labels[reduce_ignored]
 
         if true_preds.shape[0] == true_labels.shape[0]:
-            return np.sum(true_preds == true_labels) / true_preds.shape[0]
+            return np.sum(true_preds == true_labels) / true_labels.shape[0]
 
         return 0
 
     def run(self):
-        self.tokenize().generate_dataset().fine_tune().persist()
+        self.tokenize().generate_dataset().train().persist()
