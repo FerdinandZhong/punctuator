@@ -27,6 +27,7 @@ from punctuator.rotary_bert.model import (
     RotaryBertConfig,
     RotaryBertFocalLossForTokenClassification,
     RotaryBertForPreTraining,
+    RotaryBertModel
 )
 
 ModelCollection = namedtuple(
@@ -94,4 +95,11 @@ class Models(Enum):
         BertTokenizerFast,
         RotaryBertForPreTraining,
         BertModel,
+    )
+
+    ROTARY_BERT_FOCAL_LOSS = ModelCollection(
+        RotaryBertConfig,
+        BertTokenizerFast,
+        RotaryBertFocalLossForTokenClassification,
+        RotaryBertModel,
     )

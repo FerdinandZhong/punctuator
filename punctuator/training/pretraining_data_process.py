@@ -33,6 +33,8 @@ def _read_data(
             pbar = tqdm(data_file.readlines())
     for index, line in enumerate(pbar):
         if line == "\n":
+            if len(token_doc) <= 1:
+                continue
             token_docs.append(token_doc)
             punctuation_counts.append([punctuation_count])
             pbar.update(len(token_doc))
