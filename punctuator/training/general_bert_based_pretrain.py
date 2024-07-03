@@ -335,13 +335,10 @@ class PreTrainingPipeline:
             training_arguments.tokenizer_name,
             **training_arguments.additional_tokenizer_config,
         )
-        special_tokens_dict = {"additional_special_tokens": [PUNCT_TOKEN]}
+        special_token_list = [PUNCT_TOKEN]
+        special_tokens_dict = {"additional_special_tokens": special_token_list}
         self.tokenizer.add_special_tokens(special_tokens_dict)
-        self.data_collator = DataCollatorForLanguageModeling(
-            tokenizer=self.tokenizer,
-            mlm=True,
-            mlm_probability=training_arguments.mask_rate
-        )
+        self.model_config.vocab_size = self.model_config.vocab_size + len(special_token_list)
         logger.info("loaded tokenizer: %s", self.tokenizer)
         logger.info("start loading model")
         if training_arguments.load_backbone_only:
