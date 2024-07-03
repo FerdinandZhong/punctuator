@@ -686,7 +686,7 @@ class PreTrainingHeads(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.predictions = BertLMPredictionHead(config)
-        self.has_punct_predictions = nn.Linear(config.hidden_size, 3)
+        self.has_punct_predictions = nn.Linear(config.hidden_size, 2)
 
     def forward(self, sequence_output, pooled_output):
         prediction_scores = self.predictions(sequence_output)

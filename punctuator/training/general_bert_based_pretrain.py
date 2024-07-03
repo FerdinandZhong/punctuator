@@ -440,7 +440,7 @@ class PreTrainingPipeline:
 
         return self
 
-    # TODO: use new _all_mask
+    # TODO: Issue with mulit-gpu, input and target not matched
     def _all_mask(self, input_ids_all):
         masked_input_ids_all = input_ids_all.detach().clone()
         masked_labels_all = torch.full(input_ids_all.shape, -100)
