@@ -446,6 +446,7 @@ class PreTrainingPipeline:
     def _all_mask(self, input_ids_all):
         masked_input_ids_all = input_ids_all.detach().clone()
         masked_labels_all = torch.full(input_ids_all.shape, -100)
+        token_type_ids = torch.full(input_ids_all.shape, 0)
 
         for index, input_ids in enumerate(input_ids_all):
             valuable_input_ids = (
@@ -462,7 +463,7 @@ class PreTrainingPipeline:
             masked_input_ids_all[index, selection_index] = self.tokenizer.mask_token_id
             masked_labels_all[index, selection_index] = input_ids[selection_index]
             
-        return masked_input_ids_all, masked_labels_all
+        return masked_input_ids_all, masked_labels_all, token_type_ids
 
 
     def train(self):
@@ -624,9 +625,10 @@ class PreTrainingPipeline:
                 pbar.set_description(f"Processing batch: {in_epoch_steps}")
 
                 optim.zero_grad()
-                masked_input_ids, masked_labels = self._all_mask(batch["input_ids"])
+                masked_input_ids, masked_labels, token_type_ids = self._all_mask(batch["input_ids"])
                 masked_input_ids = masked_input_ids.to(self.device)
                 masked_labels = masked_labels.to(self.device)
+                token_type_ids = token_type_ids.to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
                 has_punctuation = batch["has_punctuation"].to(
                     self.device
@@ -636,7 +638,8 @@ class PreTrainingPipeline:
                     masked_input_ids,
                     attention_mask=attention_mask,
                     labels=masked_labels,
-                    has_punctuation=has_punctuation,
+                    token_type_ids=token_type_ids,
+                    has_punctuation_label=has_punctuation,
                 )
                 prediction_logits = outputs.prediction_logits
                 loss = outputs.loss
