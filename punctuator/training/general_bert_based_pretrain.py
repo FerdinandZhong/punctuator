@@ -335,12 +335,12 @@ class PreTrainingPipeline:
             training_arguments.tokenizer_name,
             **training_arguments.additional_tokenizer_config,
         )
-        special_token_list = [PUNCT_TOKEN]
-        special_tokens_dict = {"additional_special_tokens": special_token_list}
-        self.tokenizer.add_special_tokens(special_tokens_dict)
-        self.model_config.vocab_size = self.model_config.vocab_size + len(special_token_list)
+        # special_token_list = [PUNCT_TOKEN]
+        # special_tokens_dict = {"additional_special_tokens": special_token_list}
+        # self.tokenizer.add_special_tokens(special_tokens_dict)
+        # self.model_config.vocab_size = self.model_config.vocab_size + len(special_token_list)
         logger.info("loaded tokenizer: %s", self.tokenizer)
-        logger.info("special tokens: %s", self.tokenizer.additional_special_tokens_ids)
+        # logger.info("special tokens: %s", self.tokenizer.additional_special_tokens_ids)
         logger.info("start loading model")
         if training_arguments.load_backbone_only:
             backbone_model = model_collection.backbone_model.from_pretrained(

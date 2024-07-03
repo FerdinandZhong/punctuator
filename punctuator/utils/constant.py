@@ -37,14 +37,14 @@ DEFAULT_ENGLISH_NER_MAPPING = {
     ",": "COMMA",
     ".": "PERIOD",
     "?": "QUESTIONMARK",
-    "!": "EXLAMATIONMARK",
+    "!": "EXCLAMATIONMARK",
 }
 
 DEFAULT_CHINESE_NER_MAPPING = {
     "，": "C_COMMA",
     "。": "C_PERIOD",
     "？": "C_QUESTIONMARK",
-    "！": "C_EXLAMATIONMARK",
+    "！": "C_EXCLAMATIONMARK",
     "、": "C_DUNHAO",
 }
 

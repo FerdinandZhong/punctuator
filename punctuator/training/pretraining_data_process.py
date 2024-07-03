@@ -7,7 +7,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-from punctuator.utils import NORMAL_TOKEN_TAG, PUNCT_TOKEN
+from punctuator.utils import NORMAL_TOKEN_TAG, PUNCT_TOKEN, DEFAULT_ENGLISH_NER_MAPPING
 
 logger = logging.getLogger(__name__)
 cls_token = "[CLS]"
@@ -18,6 +18,7 @@ def _read_data(
     def read_line(text_line):
         return text_line.strip().split("\t")
 
+    punct_mapping = {value: key for key, value in DEFAULT_ENGLISH_NER_MAPPING.items()}
     token_docs = []
     has_punct_list = []
     line_index = 0
@@ -42,7 +43,7 @@ def _read_data(
             if token:
                 token_doc.append(token)
                 if processed_line[1] != NORMAL_TOKEN_TAG:
-                    token_doc.append(PUNCT_TOKEN)
+                    token_doc.append(punct_mapping[processed_line[1]])
                     has_punct = 1
         except AssertionError:
             logger.warning("ignore the bad line: %s, index: %d", line, index)
