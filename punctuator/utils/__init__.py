@@ -19,6 +19,7 @@ from .constant import (
     TELEPHONE_TOKEN,
     URL,
     URL_TOKEN,
+    PUNCT_TOKEN
 )
 from .model_zoo import ModelCollection, Models, model_type
 from .utils import is_ascii, str2bool
@@ -40,6 +41,7 @@ __all__ = [
     "CURRENCY_TOKEN",
     "NUMBER_TOKEN",
     "LONGNUMBER",
+    "PUNCT_TOKEN",
     "remove_brackets_text",
     "keep_only_latin_characters",
     "chinese_split",

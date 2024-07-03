@@ -686,12 +686,12 @@ class PreTrainingHeads(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.predictions = BertLMPredictionHead(config)
-        self.punct_count_predictions = nn.Linear(config.hidden_size, 3)
+        self.has_punct_predictions = nn.Linear(config.hidden_size, 3)
 
     def forward(self, sequence_output, pooled_output):
         prediction_scores = self.predictions(sequence_output)
-        punctuation_count = self.punct_count_predictions(pooled_output)
-        return prediction_scores, punctuation_count
+        has_punctuation = self.has_punct_predictions(pooled_output)
+        return prediction_scores, has_punctuation
 
 
 class RotaryBertForPreTraining(BertForPreTraining):
@@ -716,7 +716,7 @@ class RotaryBertForPreTraining(BertForPreTraining):
         head_mask: Optional[torch.Tensor] = None,
         inputs_embeds: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
-        punctuation_count_label: Optional[torch.Tensor] = None,
+        has_punctuation_label: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
@@ -726,7 +726,7 @@ class RotaryBertForPreTraining(BertForPreTraining):
             Labels for computing the masked language modeling loss. Indices should be in `[-100, 0, ...,
             config.vocab_size]` (see `input_ids` docstring) Tokens with indices set to `-100` are ignored (masked),
             the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`
-        punctuation_count_label (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
+        has_punctuation_label (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
             Labels for computing the count of the punctuations in the text (classification) loss.
             Input should be a sequence pair. Indices should be in `[0, 1, 2]`:
 
@@ -754,15 +754,15 @@ class RotaryBertForPreTraining(BertForPreTraining):
         )
 
         sequence_output, pooled_output = outputs[:2]
-        prediction_scores, punctuation_count = self.cls(sequence_output, pooled_output)
+        prediction_scores, has_punctuation = self.cls(sequence_output, pooled_output)
 
-        if labels is not None and punctuation_count_label is not None:
+        if labels is not None and has_punctuation_label is not None:
             loss_fct = CrossEntropyLoss()
             masked_lm_loss = loss_fct(
                 prediction_scores.view(-1, self.config.vocab_size), labels.view(-1)
             )
             punct_count_loss = loss_fct(
-                punctuation_count.view(-1, 3), punctuation_count_label.view(-1)
+                has_punctuation.view(-1, 2), has_punctuation_label.view(-1)
             )
             total_loss = masked_lm_loss + punct_count_loss
 
@@ -788,7 +788,7 @@ class RotaryBertForPreTraining(BertForPreTraining):
         return PreTrainingOutput(
             loss=total_loss,
             prediction_logits=prediction_scores,
-            punct_count_prediction_logits=punctuation_count,
+            punct_count_prediction_logits=has_punctuation,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )

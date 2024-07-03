@@ -11,9 +11,9 @@ from pydantic import BaseModel
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from transformers import AdamW, get_constant_schedule_with_warmup
+from transformers import AdamW, get_constant_schedule_with_warmup, DataCollatorForLanguageModeling
 
-from punctuator.utils import Models, model_type, str2bool
+from punctuator.utils import Models, model_type, str2bool, PUNCT_TOKEN
 
 from .pretraining_data_process import process_data
 
@@ -22,10 +22,9 @@ DEFAULT_LABEL_WEIGHT = 0.1
 
 
 class EncodingDataset(Dataset):
-    def __init__(self, encodings, punctuation_counts, labels=None):
+    def __init__(self, encodings, has_punctuation_list):
         self.encodings = encodings
-        self.punctuation_counts = punctuation_counts
-        self.labels = labels
+        self.has_punctuation_list = has_punctuation_list
 
     def __getitem__(self, idx):
         # following the BERT's original pretraining method
@@ -33,20 +32,14 @@ class EncodingDataset(Dataset):
             key: val[idx] if torch.is_tensor(val[idx]) else torch.tensor(val[idx])
             for key, val in self.encodings.items()
         }
-        item["punctuation_count_label"] = torch.tensor(
-            self.punctuation_counts[idx]
+        item["has_punctuation"] = torch.tensor(
+            self.has_punctuation_list[idx]
         ).type(torch.LongTensor)
 
-        if self.labels is not None:
-            item["labels"] = (
-                self.labels[idx]
-                if torch.is_tensor(self.labels[idx])
-                else torch.tensor(self.labels[idx]).type(torch.LongTensor)
-            )
         return item
 
     def __len__(self):
-        return len(self.punctuation_counts)
+        return len(self.has_punctuation_list)
 
 
 class PreTrainingArguments(BaseModel):
@@ -56,8 +49,8 @@ class PreTrainingArguments(BaseModel):
         # basic arguments
         training_corpus(List[List[str]]): list of sequences for training, longest sequence should be no longer than pretrained LM # noqa: E501
         validation_corpus(List[List[str]]): list of sequences for validation, longest sequence should be no longer than pretrained LM # noqa: E501
-        training_punctuation_counts(List[List[int]]): punctuation count in each text for training
-        val_punctuation_counts(List[List[int]]):  punctuation count in each text for validation
+        training_has_punctuation_list(List[List[int]]): has_punctuation list in each text for training
+        val_has_punctuation_list(List[List[int]]):  has_punctuation list in each text for validation
         model(Optional(enum)): model selected from Enum Models, default is "DISTILBERT"
         model_weight_name(str): name or path of pre-trained model weight
         tokenizer_name(str): name of pretrained tokenizer
@@ -81,9 +74,9 @@ class PreTrainingArguments(BaseModel):
 
     # basic args
     training_corpus: List[List[str]]
-    training_punctuation_counts: List[List[int]]
+    training_has_punctuation_list: List[List[int]]
     validation_corpus: List[List[str]]
-    val_punctuation_counts: List[List[int]]
+    val_has_punctuation_list: List[List[int]]
     model_weight_name: str
     tokenizer_name: str
     model: Optional[Models] = Models.DISTILBERT
@@ -253,25 +246,25 @@ class PreTrainingArguments(BaseModel):
 
         (
             training_corpus,
-            training_punctuation_counts,
+            training_has_punctuation_list,
         ) = process_data(
             training_raw, args.min_sequence_length, args.max_sequence_length
         )
 
         (
             validation_corpus,
-            val_punctuation_counts,
+            val_has_punctuation_list,
         ) = process_data(val_raw, args.min_sequence_length, args.max_sequence_length)
 
         sample = training_corpus[0]
         logger.info("Corpus sample: %s", sample)
-        logger.info("Punct count sample: %s", training_punctuation_counts[0])
+        logger.info("Punct count sample: %s", training_has_punctuation_list[0])
 
         return (
             training_corpus,
             validation_corpus,
-            training_punctuation_counts,
-            val_punctuation_counts,
+            training_has_punctuation_list,
+            val_has_punctuation_list,
         )
 
     @classmethod
@@ -280,8 +273,8 @@ class PreTrainingArguments(BaseModel):
         args: argparse.Namespace,
         training_corpus: List[List[str]],
         validation_corpus: List[List[str]],
-        training_punctuation_counts: List[List[int]],
-        val_punctuation_counts: List[List[int]],
+        training_has_punctuation_list: List[List[int]],
+        val_has_punctuation_list: List[List[int]],
     ):
         try:
             additional_model_config = json.loads(args.additional_model_config)
@@ -295,8 +288,8 @@ class PreTrainingArguments(BaseModel):
         training_pipeline_args = cls(
             training_corpus=training_corpus,
             validation_corpus=validation_corpus,
-            training_punctuation_counts=training_punctuation_counts,
-            val_punctuation_counts=val_punctuation_counts,
+            training_has_punctuation_list=training_has_punctuation_list,
+            val_has_punctuation_list=val_has_punctuation_list,
             model=model_type(args.model),
             load_backbone_only=args.load_backbone_only,
             model_weight_name=args.model_weight_name,
@@ -342,6 +335,13 @@ class PreTrainingPipeline:
             training_arguments.tokenizer_name,
             **training_arguments.additional_tokenizer_config,
         )
+        special_tokens_dict = {"additional_special_tokens": [PUNCT_TOKEN]}
+        self.tokenizer.add_special_tokens(special_tokens_dict)
+        self.data_collator = DataCollatorForLanguageModeling(
+            tokenizer=self.tokenizer,
+            mlm=True,
+            mlm_probability=training_arguments.mask_rate
+        )
         logger.info("loaded tokenizer: %s", self.tokenizer)
         logger.info("start loading model")
         if training_arguments.load_backbone_only:
@@ -379,8 +379,8 @@ class PreTrainingPipeline:
 
         self.total_steps = 0
         self.class_weights = None
-        self.training_punctuation_counts = None
-        self.val_punctuation_counts = None
+        self.training_has_punctuation_list = None
+        self.val_has_punctuation_list = None
         self.training_token_labels = None
         self.val_token_labels = None
         self.training_encodings = None
@@ -412,8 +412,8 @@ class PreTrainingPipeline:
             padding=True,
         )
 
-        self.training_punctuation_counts = self.arguments.training_punctuation_counts
-        self.val_punctuation_counts = self.arguments.val_punctuation_counts
+        self.training_has_punctuation_list = self.arguments.training_has_punctuation_list
+        self.val_has_punctuation_list = self.arguments.val_has_punctuation_list
 
         self.training_token_labels = self.training_encodings.input_ids
         self.val_token_labels = self.val_encodings.input_ids
@@ -434,39 +434,36 @@ class PreTrainingPipeline:
         self.val_encodings.pop("offset_mapping")
         self.training_dataset = EncodingDataset(
             self.training_encodings,
-            self.training_punctuation_counts,
-            self.training_token_labels,
+            self.training_has_punctuation_list,
         )
         self.val_dataset = EncodingDataset(
-            self.val_encodings, self.val_punctuation_counts, self.val_token_labels
+            self.val_encodings, self.val_has_punctuation_list,
         )
 
         return self
 
+    # TODO: use new _all_mask
     def _all_mask(self, input_ids_all):
         masked_input_ids_all = input_ids_all.detach().clone()
-        rand = torch.rand(input_ids_all.shape)
-    
-        index = 0
-        for input_ids in input_ids_all:
+        masked_labels_all = torch.full(input_ids_all.shape, -100)
+
+        for index, input_ids in enumerate(input_ids_all):
             valuable_input_ids = (
                 (input_ids != self.tokenizer.cls_token_id)
-                * (input_ids != self.tokenizer.sep_token_id)
-                * (input_ids != self.tokenizer.pad_token_id)
-            ).bool()
-            all_valuable_input_ids_index = valuable_input_ids.nonzero().squeeze()
-            rand = torch.rand(all_valuable_input_ids_index.shape[0])
-            mask_arr = rand < self.arguments.mask_rate
-            selection_index = all_valuable_input_ids_index[
-                torch.flatten((mask_arr).nonzero()).tolist()
-            ]
-
-            masked_input_ids_all[index, selection_index] = (
-                self.tokenizer.mask_token_id
+                & (input_ids != self.tokenizer.sep_token_id)
+                & (input_ids != self.tokenizer.pad_token_id)
             )
-            index += 1
 
-        return masked_input_ids_all
+            valuable_input_ids_index = valuable_input_ids.nonzero(as_tuple=True)[0]
+            rand_values = torch.rand(valuable_input_ids_index.shape[0])
+            mask_arr = rand_values <= 0.15
+            selection_index = valuable_input_ids_index[mask_arr]
+
+            masked_input_ids_all[index, selection_index] = self.tokenizer.mask_token_id
+            masked_labels_all[index, selection_index] = input_ids[selection_index]
+            
+        return masked_input_ids_all, masked_labels_all
+
 
     def train(self):
         logger.info("start training")
@@ -627,18 +624,19 @@ class PreTrainingPipeline:
                 pbar.set_description(f"Processing batch: {in_epoch_steps}")
 
                 optim.zero_grad()
-                input_ids = self._all_mask(batch["input_ids"]).to(self.device)
+                masked_input_ids, masked_labels = self._all_mask(batch["input_ids"])
+                masked_input_ids = masked_input_ids.to(self.device)
+                masked_labels = masked_labels.to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
-                labels = batch["labels"].to(self.device)
-                punctuation_count_label = batch["punctuation_count_label"].to(
+                has_punctuation = batch["has_punctuation"].to(
                     self.device
                 )
 
                 outputs = self.full_model(
-                    input_ids,
+                    masked_input_ids,
                     attention_mask=attention_mask,
-                    labels=labels,
-                    punctuation_count_label=punctuation_count_label,
+                    labels=masked_labels,
+                    has_punctuation=has_punctuation,
                 )
                 prediction_logits = outputs.prediction_logits
                 loss = outputs.loss
@@ -659,7 +657,7 @@ class PreTrainingPipeline:
                 self.total_steps += 1
 
                 epoch_loss += loss.item()
-                epoch_acc += self._accuracy(prediction_logits, labels)
+                epoch_acc += self._accuracy(prediction_logits, masked_labels)
 
                 pbar.update(1)
                 pbar.set_postfix(
