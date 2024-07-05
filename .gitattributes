@@ -4,3 +4,6 @@ data/training/all_data.txt filter=lfs diff=lfs merge=lfs -text
 data/code_switching_training_data/training.txt filter=lfs diff=lfs merge=lfs -text
 data/code_switching_training_data/validation.txt filter=lfs diff=lfs merge=lfs -text
 data/code_switching_training_data/test.txt filter=lfs diff=lfs merge=lfs -text
+data/code_switching_binary_training_data/training.txt filter=lfs diff=lfs merge=lfs -text
+data/code_switching_binary_training_data/validation.txt filter=lfs diff=lfs merge=lfs -text
+data/code_switching_binary_training_data/test.txt filter=lfs diff=lfs merge=lfs -text
