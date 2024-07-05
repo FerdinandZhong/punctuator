@@ -799,8 +799,8 @@ class NERTrainingPipeline:
                 pbar.update(1)
                 pbar.set_postfix(
                     {
-                        "Last_loss": f"{loss:.2f}",
-                        "Avg_cum_loss": f"{epoch_loss/in_epoch_steps:.2f}",
+                        "Last_loss": f"{loss:.3f}",
+                        "Avg_cum_loss": f"{epoch_loss/in_epoch_steps:.3f}",
                     }
                 )
 
