@@ -257,7 +257,7 @@ class EvaluationPipeline:
                     logits, labels, attention_mask, result_type="recall"
                 )
                 precision_position_preds, precision_position_labels = self._position_results(
-                    logits, labels, attention_mask, result_type="recall"
+                    logits, labels, attention_mask, result_type="precision"
                 )
                 if not self.arguments.only_compute_positional_recal:
                     total_preds.extend(true_preds)
