@@ -46,6 +46,7 @@ class EvaluationArguments(BaseModel):
     gpu_device: Optional[int] = environ.get("CUDA_VISIBLE_DEVICES", 0)
     additional_tokenizer_config: Optional[Dict] = {}
     additional_model_config: Optional[Dict] = {}
+    only_compute_positional_recal: bool = False
 
     @staticmethod
     def add_cli_args(
@@ -118,6 +119,12 @@ class EvaluationArguments(BaseModel):
             default="{}",
             help="JSON string of additional model config",
         )
+        parser.add_argument(
+            "--only_compute_positional_recal",
+            type=str2bool,
+            default=False,
+            help="whether only compute the positional recall"
+        )
         return parser
 
     @staticmethod
@@ -172,6 +179,7 @@ class EvaluationArguments(BaseModel):
             gpu_device=args.gpu_device,
             label2id=label2id,
             additional_tokenizer_config=additional_tokenizer_config,
+            only_compute_positional_recal=args.only_compute_positional_recal
         )
 
         return evaluation_pipeline_args
@@ -246,28 +254,30 @@ class EvaluationPipeline:
                 position_preds, position_labels = self._position_results(
                     logits, labels, attention_mask
                 )
-                total_preds.extend(true_preds)
-                total_labels.extend(true_labels)
+                if not self.arguments.only_compute_positional_recal:
+                    total_preds.extend(true_preds)
+                    total_labels.extend(true_labels)
                 total_position_preds.extend(position_preds)
                 total_position_labels.extend(position_labels)
 
                 pbar.update(1)
 
-        tested_labels = []
-        target_names = []
-        for label, label_id in self.label2id.items():
-            if label != NORMAL_TOKEN_TAG:
-                tested_labels.append(label_id)
-                target_names.append(label)
-        report = classification_report(
-            total_labels,
-            total_preds,
-            labels=tested_labels,
-            digits=4,
-            target_names=target_names,
-            zero_division=1,
-        )
-        logger.info("validation report: \n %s", report)
+        if not self.arguments.only_compute_positional_recal:
+            tested_labels = []
+            target_names = []
+            for label, label_id in self.label2id.items():
+                if label != NORMAL_TOKEN_TAG:
+                    tested_labels.append(label_id)
+                    target_names.append(label)
+            report = classification_report(
+                total_labels,
+                total_preds,
+                labels=tested_labels,
+                digits=4,
+                target_names=target_names,
+                zero_division=1,
+            )
+            logger.info("validation report: \n %s", report)
 
         if len(total_position_labels) == len(total_position_preds):
             total_recall = np.sum(
