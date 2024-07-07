@@ -248,8 +248,8 @@ class EvaluationPipeline:
                 )
                 total_preds.extend(true_preds)
                 total_labels.extend(true_labels)
-                total_position_preds.append(position_preds)
-                total_position_labels.append(position_labels)
+                total_position_preds.extend(position_preds)
+                total_position_labels.extend(position_labels)
 
                 pbar.update(1)
 
