@@ -7,10 +7,11 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-from punctuator.utils import NORMAL_TOKEN_TAG, PUNCT_TOKEN, DEFAULT_ENGLISH_NER_MAPPING
+from punctuator.utils import DEFAULT_ENGLISH_NER_MAPPING, NORMAL_TOKEN_TAG
 
 logger = logging.getLogger(__name__)
 cls_token = "[CLS]"
+
 
 def _read_data(
     source_data, min_sequence_length, max_sequence_length

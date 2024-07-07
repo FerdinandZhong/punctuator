@@ -226,6 +226,9 @@ class EvaluationPipeline:
         steps = 0
         total_preds = []
         total_labels = []
+        total_position_preds = []
+        total_position_labels = []
+
         with tqdm(total=len(val_loader)) as pbar:
             for batch in val_loader:
                 steps += 1
@@ -240,16 +243,21 @@ class EvaluationPipeline:
                 true_preds, true_labels = self._post_process(
                     logits, labels, attention_mask
                 )
+                position_preds, position_labels = self._position_results(
+                    logits, labels, attention_mask
+                )
                 total_preds.extend(true_preds)
                 total_labels.extend(true_labels)
+                total_position_preds.append(position_preds)
+                total_position_labels.append(position_labels)
 
                 pbar.update(1)
 
         tested_labels = []
         target_names = []
-        for label, id in self.label2id.items():
+        for label, label_id in self.label2id.items():
             if label != NORMAL_TOKEN_TAG:
-                tested_labels.append(id)
+                tested_labels.append(label_id)
                 target_names.append(label)
         report = classification_report(
             total_labels,
@@ -259,7 +267,13 @@ class EvaluationPipeline:
             target_names=target_names,
             zero_division=1,
         )
-        logger.info(f"validation report: \n {report}")
+        logger.info("validation report: \n %s", report)
+
+        if len(total_position_labels) == len(total_position_preds):
+            total_recall = np.sum(
+                np.array(total_position_preds) == np.array(total_position_labels)
+            ) / len(total_position_preds)
+            logger.info("Total recall of puncts position: %.3f", total_recall)
 
     def run(self):
         self.tokenize().validate()
@@ -280,7 +294,7 @@ class EvaluationPipeline:
                     ] = doc_labels
                     encoded_labels.append(doc_enc_labels.tolist())
                 except ValueError as e:
-                    logger.warning(f"error encoding: {str(e)}")
+                    logger.warning("error encoding: %s", str(e))
                 pbar.update(1)
 
         return encoded_labels
@@ -301,3 +315,33 @@ class EvaluationPipeline:
         true_preds = not_padding_preds[reduce_ignored]
 
         return true_preds, true_labels
+
+    def _position_results(self, logits, labels, all_attention_mask):
+        all_preds = logits.argmax(dim=-1).detach()
+        all_labels = labels.detach()
+        all_attention_mask = all_attention_mask.detach()
+        if self.device.type == "cuda":
+            all_preds = all_preds.cpu()
+            all_labels = all_labels.cpu()
+            all_attention_mask = all_attention_mask.cpu()
+
+        position_predictions = []
+        position_gts = []
+
+        for predictions, labels, attention_mask in zip(
+            all_preds, all_labels, all_attention_mask
+        ):
+            gt_positions = (attention_mask == 1) & (labels > 0)
+
+            # prediction_position_ids = prediction_positions.nonzero(as_tuple=True)[0]
+            gt_position_ids = gt_positions.nonzero(as_tuple=True)[0]
+
+            predictions_in_positions = predictions[gt_position_ids].numpy()
+            predictions_in_positions[predictions_in_positions > 1] = 1
+            gt_in_positions = labels[gt_position_ids].numpy()
+            gt_in_positions[gt_in_positions > 1] = 1
+            position_predictions.extend(predictions_in_positions)
+            position_gts.extend(gt_in_positions)
+            # position_gts[index, gt_position_ids] = 1
+
+        return position_predictions, position_gts

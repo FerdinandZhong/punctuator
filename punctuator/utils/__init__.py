@@ -16,10 +16,10 @@ from .constant import (
     LONGNUMBER,
     NORMAL_TOKEN_TAG,
     NUMBER_TOKEN,
+    PUNCT_TOKEN,
     TELEPHONE_TOKEN,
     URL,
     URL_TOKEN,
-    PUNCT_TOKEN
 )
 from .model_zoo import ModelCollection, Models, model_type
 from .utils import is_ascii, str2bool

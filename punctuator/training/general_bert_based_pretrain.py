@@ -11,9 +11,9 @@ from pydantic import BaseModel
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from transformers import AdamW, get_constant_schedule_with_warmup, DataCollatorForLanguageModeling
+from transformers import AdamW, get_constant_schedule_with_warmup
 
-from punctuator.utils import Models, model_type, str2bool, PUNCT_TOKEN
+from punctuator.utils import Models, model_type, str2bool
 
 from .pretraining_data_process import process_data
 
@@ -32,9 +32,9 @@ class EncodingDataset(Dataset):
             key: val[idx] if torch.is_tensor(val[idx]) else torch.tensor(val[idx])
             for key, val in self.encodings.items()
         }
-        item["has_punctuation"] = torch.tensor(
-            self.has_punctuation_list[idx]
-        ).type(torch.LongTensor)
+        item["has_punctuation"] = torch.tensor(self.has_punctuation_list[idx]).type(
+            torch.LongTensor
+        )
 
         return item
 
@@ -410,7 +410,9 @@ class PreTrainingPipeline:
             padding=True,
         )
 
-        self.training_has_punctuation_list = self.arguments.training_has_punctuation_list
+        self.training_has_punctuation_list = (
+            self.arguments.training_has_punctuation_list
+        )
         self.val_has_punctuation_list = self.arguments.val_has_punctuation_list
 
         self.training_token_labels = self.training_encodings.input_ids
@@ -435,7 +437,8 @@ class PreTrainingPipeline:
             self.training_has_punctuation_list,
         )
         self.val_dataset = EncodingDataset(
-            self.val_encodings, self.val_has_punctuation_list,
+            self.val_encodings,
+            self.val_has_punctuation_list,
         )
 
         return self
@@ -460,9 +463,8 @@ class PreTrainingPipeline:
 
             masked_input_ids_all[index, selection_index] = self.tokenizer.mask_token_id
             masked_labels_all[index, selection_index] = input_ids[selection_index]
-            
-        return masked_input_ids_all, masked_labels_all, token_type_ids
 
+        return masked_input_ids_all, masked_labels_all, token_type_ids
 
     def train(self):
         logger.info("start training")
@@ -623,14 +625,14 @@ class PreTrainingPipeline:
                 pbar.set_description(f"Processing batch: {in_epoch_steps}")
 
                 optim.zero_grad()
-                masked_input_ids, masked_labels, token_type_ids = self._all_mask(batch["input_ids"])
+                masked_input_ids, masked_labels, token_type_ids = self._all_mask(
+                    batch["input_ids"]
+                )
                 masked_input_ids = masked_input_ids.to(self.device)
                 masked_labels = masked_labels.to(self.device)
                 token_type_ids = token_type_ids.to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
-                has_punctuation = batch["has_punctuation"].to(
-                    self.device
-                )
+                has_punctuation = batch["has_punctuation"].to(self.device)
 
                 outputs = self.full_model(
                     masked_input_ids,
