@@ -234,8 +234,10 @@ class EvaluationPipeline:
         steps = 0
         total_preds = []
         total_labels = []
-        total_position_preds = []
-        total_position_labels = []
+        total_position_preds_recall = []
+        total_position_labels_recall = []
+        total_position_preds_precision = []
+        total_position_labels_precision = []
 
         with tqdm(total=len(val_loader)) as pbar:
             for batch in val_loader:
@@ -251,14 +253,19 @@ class EvaluationPipeline:
                 true_preds, true_labels = self._post_process(
                     logits, labels, attention_mask
                 )
-                position_preds, position_labels = self._position_results(
-                    logits, labels, attention_mask
+                recall_position_preds, recall_position_labels = self._position_results(
+                    logits, labels, attention_mask, result_type="recall"
+                )
+                precision_position_preds, precision_position_labels = self._position_results(
+                    logits, labels, attention_mask, result_type="recall"
                 )
                 if not self.arguments.only_compute_positional_recal:
                     total_preds.extend(true_preds)
                     total_labels.extend(true_labels)
-                total_position_preds.extend(position_preds)
-                total_position_labels.extend(position_labels)
+                total_position_preds_recall.extend(recall_position_preds)
+                total_position_labels_recall.extend(recall_position_labels)
+                total_position_preds_precision.extend(precision_position_preds)
+                total_position_labels_precision.extend(precision_position_labels)
 
                 pbar.update(1)
 
@@ -279,11 +286,16 @@ class EvaluationPipeline:
             )
             logger.info("validation report: \n %s", report)
 
-        if len(total_position_labels) == len(total_position_preds):
+        if len(total_position_labels_recall) == len(total_position_preds_recall):
             total_recall = np.sum(
-                np.array(total_position_preds) == np.array(total_position_labels)
-            ) / len(total_position_preds)
+                np.array(total_position_preds_recall) == np.array(total_position_labels_recall)
+            ) / len(total_position_preds_recall)
             logger.info("Total recall of puncts position: %.3f", total_recall)
+        if len(total_position_labels_precision) == len(total_position_preds_precision):
+            total_recall = np.sum(
+                np.array(total_position_preds_precision) == np.array(total_position_labels_precision)
+            ) / len(total_position_preds_precision)
+            logger.info("Total precision of puncts position: %.3f", total_recall)
 
     def run(self):
         self.tokenize().validate()
@@ -326,7 +338,7 @@ class EvaluationPipeline:
 
         return true_preds, true_labels
 
-    def _position_results(self, logits, labels, all_attention_mask):
+    def _position_results(self, logits, labels, all_attention_mask, result_type:str="recall"):
         all_preds = logits.argmax(dim=-1).detach()
         all_labels = labels.detach()
         all_attention_mask = all_attention_mask.detach()
@@ -341,14 +353,19 @@ class EvaluationPipeline:
         for predictions, labels, attention_mask in zip(
             all_preds, all_labels, all_attention_mask
         ):
+            prediction_positions = (attention_mask == 1) & (predictions > 0)
             gt_positions = (attention_mask == 1) & (labels > 0)
 
-            # prediction_position_ids = prediction_positions.nonzero(as_tuple=True)[0]
+            prediction_position_ids = prediction_positions.nonzero(as_tuple=True)[0]
             gt_position_ids = gt_positions.nonzero(as_tuple=True)[0]
 
-            predictions_in_positions = predictions[gt_position_ids].numpy()
+            if result_type == "recall":
+                position_ids = gt_position_ids
+            elif result_type == "precision":
+                position_ids = prediction_position_ids
+            predictions_in_positions = predictions[position_ids].numpy()
             predictions_in_positions[predictions_in_positions > 1] = 1
-            gt_in_positions = labels[gt_position_ids].numpy()
+            gt_in_positions = labels[position_ids].numpy()
             gt_in_positions[gt_in_positions > 1] = 1
             position_predictions.extend(predictions_in_positions)
             position_gts.extend(gt_in_positions)
