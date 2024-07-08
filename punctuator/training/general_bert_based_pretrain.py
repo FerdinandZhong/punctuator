@@ -376,8 +376,8 @@ class PreTrainingPipeline:
 
         self.total_steps = 0
         self.class_weights = None
-        self.training_has_punctuation_list = None
-        self.val_has_punctuation_list = None
+        self.training_has_punctuation_list = self.arguments.training_has_punctuation_list
+        self.val_has_punctuation_list = self.arguments.val_has_punctuation_list
         self.training_encodings = None
         self.val_encodings = None
         self.training_dataset = None
@@ -395,35 +395,6 @@ class PreTrainingPipeline:
         )
         return encoding
 
-    def tokenize(self):
-        """
-        Tokenizes the training and validation corpora using the specified tokenizer.
-
-        This method prepares the text data for further processing by converting it into a format that the model can understand.
-        It also handles splitting the text into words where necessary and ensures that the resulting tokens are padded appropriately.
-        """  # noqa E501
-        logger.info("tokenize data")
-
-        # TODO: better way of tokenizing
-        self.training_encodings = self.tokenizer(
-            self.arguments.training_corpus,
-            is_split_into_words=True,
-            return_offsets_mapping=True,
-            padding=True,
-        )
-        self.val_encodings = self.tokenizer(
-            self.arguments.validation_corpus,
-            is_split_into_words=True,
-            return_offsets_mapping=True,
-            padding=True,
-        )
-
-        self.training_has_punctuation_list = (
-            self.arguments.training_has_punctuation_list
-        )
-        self.val_has_punctuation_list = self.arguments.val_has_punctuation_list
-
-        return self
 
     def generate_dataset(self):
         """
