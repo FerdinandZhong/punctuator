@@ -29,16 +29,19 @@ class InputsDataset(Dataset):
     # TODO: tokenize the data while loading
     def __getitem__(self, idx):
         # following the BERT's original pretraining method
-        item = {}
-        item["inputs"] = self.inputs[idx]
-        item["has_punctuation"] = torch.tensor(self.has_punctuation_list[idx]).type(
+        has_punctuation = torch.tensor(self.has_punctuation_list[idx]).type(
             torch.LongTensor
         )
 
-        return item
+        return self.inputs[idx], has_punctuation
 
     def __len__(self):
         return len(self.has_punctuation_list)
+
+
+def collate_fn(batch):
+    inputs, has_punctuation = zip(*batch)
+    return {"inputs": inputs, "has_punctuation": has_punctuation}
 
 
 class PreTrainingArguments(BaseModel):
@@ -444,10 +447,10 @@ class PreTrainingPipeline:
         logger.info("start training")
 
         train_loader = DataLoader(
-            self.training_dataset, batch_size=self.arguments.batch_size, shuffle=True, collate_fn=lambda x: x
+            self.training_dataset, batch_size=self.arguments.batch_size, shuffle=True, collate_fn=collate_fn
         )
         val_loader = DataLoader(
-            self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True, collate_fn=lambda x: x
+            self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True, collate_fn=collate_fn
         )
         optim = AdamW(self.full_model.parameters(), lr=1e-5)
 
