@@ -593,11 +593,9 @@ class PreTrainingPipeline:
 
         in_epoch_steps = 0
 
-        dataiter = iter(iterator)
-        data = dataiter.next()
 
         with tqdm(total=len(iterator)) as pbar:
-            for batch in data:
+            for batch in iterator:
                 in_epoch_steps += 1
                 pbar.set_description(f"Processing batch: {in_epoch_steps}")
 
