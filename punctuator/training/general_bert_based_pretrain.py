@@ -21,17 +21,16 @@ logger = logging.getLogger(__name__)
 DEFAULT_LABEL_WEIGHT = 0.1
 
 
-class EncodingDataset(Dataset):
-    def __init__(self, encodings, has_punctuation_list):
-        self.encodings = encodings
+class InputsDataset(Dataset):
+    def __init__(self, inputs, has_punctuation_list):
+        self.inputs = inputs
         self.has_punctuation_list = has_punctuation_list
 
+    # TODO: tokenize the data while loading
     def __getitem__(self, idx):
         # following the BERT's original pretraining method
-        item = {
-            key: val[idx] if torch.is_tensor(val[idx]) else torch.tensor(val[idx])
-            for key, val in self.encodings.items()
-        }
+        item = {}
+        item["inputs"] = self.inputs[idx]
         item["has_punctuation"] = torch.tensor(self.has_punctuation_list[idx]).type(
             torch.LongTensor
         )
@@ -379,14 +378,22 @@ class PreTrainingPipeline:
         self.class_weights = None
         self.training_has_punctuation_list = None
         self.val_has_punctuation_list = None
-        self.training_token_labels = None
-        self.val_token_labels = None
         self.training_encodings = None
         self.val_encodings = None
         self.training_dataset = None
         self.val_dataset = None
         self.best_state_dict = None
         self.best_acc_state_dict = None
+
+    def _tokenize(self, batch_inputs):
+        encoding = self.tokenizer(
+            batch_inputs,
+            is_split_into_words=True,
+            return_offsets_mapping=True,
+            padding=True,
+            return_tensors='pt'
+        )
+        return encoding
 
     def tokenize(self):
         """
@@ -397,6 +404,7 @@ class PreTrainingPipeline:
         """  # noqa E501
         logger.info("tokenize data")
 
+        # TODO: better way of tokenizing
         self.training_encodings = self.tokenizer(
             self.arguments.training_corpus,
             is_split_into_words=True,
@@ -415,9 +423,6 @@ class PreTrainingPipeline:
         )
         self.val_has_punctuation_list = self.arguments.val_has_punctuation_list
 
-        self.training_token_labels = self.training_encodings.input_ids
-        self.val_token_labels = self.val_encodings.input_ids
-
         return self
 
     def generate_dataset(self):
@@ -430,14 +435,12 @@ class PreTrainingPipeline:
             self: The instance of the class itself for method chaining.
         """  # noqa E 501
         logger.info("generate dataset from tokenized data")
-        self.training_encodings.pop("offset_mapping")
-        self.val_encodings.pop("offset_mapping")
-        self.training_dataset = EncodingDataset(
-            self.training_encodings,
+        self.training_dataset = InputsDataset(
+            self.arguments.training_corpus,
             self.training_has_punctuation_list,
         )
-        self.val_dataset = EncodingDataset(
-            self.val_encodings,
+        self.val_dataset = InputsDataset(
+            self.arguments.validation_corpus,
             self.val_has_punctuation_list,
         )
 
@@ -624,9 +627,9 @@ class PreTrainingPipeline:
                 in_epoch_steps += 1
                 pbar.set_description(f"Processing batch: {in_epoch_steps}")
 
-                optim.zero_grad()
+                tokenized_inputs = self._tokenize(batch["inputs"])
                 masked_input_ids, masked_labels, token_type_ids = self._all_mask(
-                    batch["input_ids"]
+                    tokenized_inputs["input_ids"]
                 )
                 masked_input_ids = masked_input_ids.to(self.device)
                 masked_labels = masked_labels.to(self.device)
@@ -634,6 +637,8 @@ class PreTrainingPipeline:
                 attention_mask = batch["attention_mask"].to(self.device)
                 has_punctuation = batch["has_punctuation"].to(self.device)
 
+                # start training of the batch
+                optim.zero_grad()
                 outputs = self.full_model(
                     masked_input_ids,
                     attention_mask=attention_mask,
@@ -698,4 +703,4 @@ class PreTrainingPipeline:
         return 0
 
     def run(self):
-        self.tokenize().generate_dataset().train().persist()
+        self.generate_dataset().train().persist()
