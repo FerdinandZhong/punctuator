@@ -444,10 +444,10 @@ class PreTrainingPipeline:
         logger.info("start training")
 
         train_loader = DataLoader(
-            self.training_dataset, batch_size=self.arguments.batch_size, shuffle=True
+            self.training_dataset, batch_size=self.arguments.batch_size, shuffle=True, collate_fn=lambda x: x
         )
         val_loader = DataLoader(
-            self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True
+            self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True, collate_fn=lambda x: x
         )
         optim = AdamW(self.full_model.parameters(), lr=1e-5)
 
