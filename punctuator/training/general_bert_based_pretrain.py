@@ -41,7 +41,7 @@ class InputsDataset(Dataset):
 
 def collate_fn(batch):
     inputs, has_punctuation = zip(*batch)
-    return {"inputs": inputs, "has_punctuation": has_punctuation}
+    return {"inputs": inputs, "has_punctuation": torch.stack(has_punctuation)}
 
 
 class PreTrainingArguments(BaseModel):
@@ -609,7 +609,7 @@ class PreTrainingPipeline:
                 masked_input_ids = masked_input_ids.to(self.device)
                 masked_labels = masked_labels.to(self.device)
                 token_type_ids = token_type_ids.to(self.device)
-                attention_mask = batch["attention_mask"].to(self.device)
+                attention_mask = tokenized_inputs["attention_mask"].to(self.device)
                 has_punctuation = batch["has_punctuation"].to(self.device)
 
                 # start training of the batch
