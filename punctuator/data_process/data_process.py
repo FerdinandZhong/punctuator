@@ -71,6 +71,7 @@ def clean_up_data_from_txt(
     source_data,
     output_file_path,
     ner_mapping=DEFAULT_ENGLISH_NER_MAPPING,
+    additional_to_keep=[],
     additional_to_remove=[],
     special_cleaning_funcs=[],
 ):
@@ -83,7 +84,7 @@ def clean_up_data_from_txt(
         additional_to_remove (list, optional): additional special characters to remove, default []
         special_cleaning_funcs (List[funcs], optional): additional cleaning funcs to apply to csv data, default []
     """
-    kept_punctuations = [ord(p) for p in set(ner_mapping.keys())]
+    kept_punctuations = [ord(p) for p in set(ner_mapping.keys())] + [ord(p) for p in additional_to_keep]
     removed_punctuations = [p for p in ALL_PUNCS if p not in kept_punctuations] + [
         ord(p) for p in additional_to_remove
     ]

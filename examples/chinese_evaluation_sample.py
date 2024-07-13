@@ -75,7 +75,7 @@ if __name__ == "__main__":
         {
             "C_COMMA": 2,
             "C_DUNHAO": 1,
-            "C_EXLAMATIONMARK": 0,
+            "C_EXCLAMATIONMARK": 0,
             "C_PERIOD": 5,
             "C_QUESTIONMARK": 3,
             "O": 4,

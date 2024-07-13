@@ -14,7 +14,7 @@ data_file_path = "training_data/english_token_tag_data.txt"
 ) = generate_training_data_splitting(data_file_path, 16, 256, 0.25)
 
 
-label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTIONMARK": 3, "EXLAMATIONMARK": 4}
+label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTIONMARK": 3, "EXCLAMATIONMARK": 4}
 training_tags = [[label2id[tag] for tag in doc] for doc in training_tags]
 validation_tags = [[label2id[tag] for tag in doc] for doc in validation_tags]
 

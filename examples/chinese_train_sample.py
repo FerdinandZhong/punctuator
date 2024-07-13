@@ -19,7 +19,7 @@ if __name__ == "__main__":
         "C_COMMA": 1,
         "C_PERIOD": 2,
         "C_QUESTIONMARK": 3,
-        "C_EXLAMATIONMARK": 4,
+        "C_EXCLAMATIONMARK": 4,
         "C_DUNHAO": 5,
     }
 

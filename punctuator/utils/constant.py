@@ -20,7 +20,7 @@ DEFAULT_ENGLISH_TAG_PUNCTUATOR_MAP = {
     "COMMA": (",", False),
     "PERIOD": (".", True),
     "QUESTIONMARK": ("?", True),
-    "EXLAMATIONMARK": ("!", True),
+    "EXCLAMATIONMARK": ("!", True),
 }
 
 DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP = {
@@ -28,7 +28,7 @@ DEFAULT_CHINESE_TAG_PUNCTUATOR_MAP = {
     "C_COMMA": ("，", False),
     "C_PERIOD": ("。", True),
     "C_QUESTIONMARK": ("? ", True),
-    "C_EXLAMATIONMARK": ("! ", True),
+    "C_EXCLAMATIONMARK": ("! ", True),
     "C_DUNHAO": ("、", False),
 }
 
