@@ -7,3 +7,9 @@ data/code_switching_training_data/test.txt filter=lfs diff=lfs merge=lfs -text
 data/code_switching_binary_training_data/training.txt filter=lfs diff=lfs merge=lfs -text
 data/code_switching_binary_training_data/validation.txt filter=lfs diff=lfs merge=lfs -text
 data/code_switching_binary_training_data/test.txt filter=lfs diff=lfs merge=lfs -text
+data/llm_datasets/direct_restoration/test.json filter=lfs diff=lfs merge=lfs -text
+data/llm_datasets/direct_restoration/validation.json filter=lfs diff=lfs merge=lfs -text
+data/llm_datasets/direct_restoration/training.json filter=lfs diff=lfs merge=lfs -text
+data/llm_datasets/output_labels/test.json filter=lfs diff=lfs merge=lfs -text
+data/llm_datasets/output_labels/training.json filter=lfs diff=lfs merge=lfs -text
+data/llm_datasets/output_labels/validation.json filter=lfs diff=lfs merge=lfs -text
