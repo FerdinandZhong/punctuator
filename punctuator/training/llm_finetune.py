@@ -212,6 +212,11 @@ if __name__ == "__main__":
         compute_metrics=compute_metrics_for_position
     )
 
+    trainer.train()
+
+    model.save_pretrained(training_args.output_dir)
+    tokenizer.save_pretrained(training_args.output_dir))
+
 
 
 
