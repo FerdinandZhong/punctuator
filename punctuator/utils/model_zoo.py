@@ -15,7 +15,10 @@ from transformers import (
     RobertaForTokenClassification,
     RobertaModel,
     RobertaTokenizerFast,
+    Qwen2Config,
+    Qwen2TokenizerFast,
 )
+from transformers.models.qwen2 import Qwen2ForCausalLM
 
 from punctuator.focal_loss.bert_focal_loss import BertFocalLossForTokenClassification
 from punctuator.pykan.model import (
@@ -102,4 +105,11 @@ class Models(Enum):
         BertTokenizerFast,
         RotaryBertFocalLossForTokenClassification,
         RotaryBertModel,
+    )
+
+    QWEN2 = ModelCollection(
+        Qwen2Config,
+        Qwen2TokenizerFast,
+        Qwen2ForCausalLM,
+        Qwen2ForCausalLM
     )
