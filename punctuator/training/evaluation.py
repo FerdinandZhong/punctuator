@@ -123,7 +123,7 @@ class EvaluationArguments(BaseModel):
             "--only_compute_positional_recal",
             type=str2bool,
             default=False,
-            help="whether only compute the positional recall"
+            help="whether only compute the positional recall",
         )
         return parser
 
@@ -179,7 +179,7 @@ class EvaluationArguments(BaseModel):
             gpu_device=args.gpu_device,
             label2id=label2id,
             additional_tokenizer_config=additional_tokenizer_config,
-            only_compute_positional_recal=args.only_compute_positional_recal
+            only_compute_positional_recal=args.only_compute_positional_recal,
         )
 
         return evaluation_pipeline_args
@@ -256,8 +256,10 @@ class EvaluationPipeline:
                 recall_position_preds, recall_position_labels = self._position_results(
                     logits, labels, attention_mask, result_type="recall"
                 )
-                precision_position_preds, precision_position_labels = self._position_results(
-                    logits, labels, attention_mask, result_type="precision"
+                precision_position_preds, precision_position_labels = (
+                    self._position_results(
+                        logits, labels, attention_mask, result_type="precision"
+                    )
                 )
                 if not self.arguments.only_compute_positional_recal:
                     total_preds.extend(true_preds)
@@ -288,12 +290,14 @@ class EvaluationPipeline:
 
         if len(total_position_labels_recall) == len(total_position_preds_recall):
             total_recall = np.sum(
-                np.array(total_position_preds_recall) == np.array(total_position_labels_recall)
+                np.array(total_position_preds_recall)
+                == np.array(total_position_labels_recall)
             ) / len(total_position_preds_recall)
             logger.info("Total recall of puncts position: %.3f", total_recall)
         if len(total_position_labels_precision) == len(total_position_preds_precision):
             total_recall = np.sum(
-                np.array(total_position_preds_precision) == np.array(total_position_labels_precision)
+                np.array(total_position_preds_precision)
+                == np.array(total_position_labels_precision)
             ) / len(total_position_preds_precision)
             logger.info("Total precision of puncts position: %.3f", total_recall)
 
@@ -338,7 +342,9 @@ class EvaluationPipeline:
 
         return true_preds, true_labels
 
-    def _position_results(self, logits, labels, all_attention_mask, result_type:str="recall"):
+    def _position_results(
+        self, logits, labels, all_attention_mask, result_type: str = "recall"
+    ):
         all_preds = logits.argmax(dim=-1).detach()
         all_labels = labels.detach()
         all_attention_mask = all_attention_mask.detach()

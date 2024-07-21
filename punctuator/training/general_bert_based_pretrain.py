@@ -379,7 +379,9 @@ class PreTrainingPipeline:
 
         self.total_steps = 0
         self.class_weights = None
-        self.training_has_punctuation_list = self.arguments.training_has_punctuation_list
+        self.training_has_punctuation_list = (
+            self.arguments.training_has_punctuation_list
+        )
         self.val_has_punctuation_list = self.arguments.val_has_punctuation_list
         self.training_encodings = None
         self.val_encodings = None
@@ -394,10 +396,9 @@ class PreTrainingPipeline:
             is_split_into_words=True,
             return_offsets_mapping=True,
             padding=True,
-            return_tensors='pt'
+            return_tensors="pt",
         )
         return encoding
-
 
     def generate_dataset(self):
         """
@@ -447,10 +448,16 @@ class PreTrainingPipeline:
         logger.info("start training")
 
         train_loader = DataLoader(
-            self.training_dataset, batch_size=self.arguments.batch_size, shuffle=True, collate_fn=collate_fn
+            self.training_dataset,
+            batch_size=self.arguments.batch_size,
+            shuffle=True,
+            collate_fn=collate_fn,
         )
         val_loader = DataLoader(
-            self.val_dataset, batch_size=self.arguments.batch_size, shuffle=True, collate_fn=collate_fn
+            self.val_dataset,
+            batch_size=self.arguments.batch_size,
+            shuffle=True,
+            collate_fn=collate_fn,
         )
         optim = AdamW(self.full_model.parameters(), lr=1e-5)
 
@@ -595,7 +602,6 @@ class PreTrainingPipeline:
             self.full_model.train()
 
         in_epoch_steps = 0
-
 
         with tqdm(total=len(iterator)) as pbar:
             for batch in iterator:

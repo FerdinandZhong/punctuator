@@ -36,7 +36,13 @@ if __name__ == "__main__":
     )
 
     # must be exact same as model's config
-    label2id = {"COMMA": 2, "EXCLAMATIONMARK": 1, "O": 3, "PERIOD": 4, "QUESTIONMARK": 0}
+    label2id = {
+        "COMMA": 2,
+        "EXCLAMATIONMARK": 1,
+        "O": 3,
+        "PERIOD": 4,
+        "QUESTIONMARK": 0,
+    }
     evalution_corpus, evaluation_tags = process_data(
         "evaluation_data/english_token_tag_ted_data.txt", 16, 256
     )

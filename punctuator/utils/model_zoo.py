@@ -11,12 +11,12 @@ from transformers import (
     DistilBertConfig,
     DistilBertForTokenClassification,
     DistilBertTokenizerFast,
+    Qwen2Config,
+    Qwen2TokenizerFast,
     RobertaConfig,
     RobertaForTokenClassification,
     RobertaModel,
     RobertaTokenizerFast,
-    Qwen2Config,
-    Qwen2TokenizerFast,
 )
 from transformers.models.qwen2 import Qwen2ForCausalLM
 
@@ -108,8 +108,5 @@ class Models(Enum):
     )
 
     QWEN2 = ModelCollection(
-        Qwen2Config,
-        Qwen2TokenizerFast,
-        Qwen2ForCausalLM,
-        Qwen2ForCausalLM
+        Qwen2Config, Qwen2TokenizerFast, Qwen2ForCausalLM, Qwen2ForCausalLM
     )
