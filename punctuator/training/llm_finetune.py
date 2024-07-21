@@ -72,16 +72,16 @@ def compute_precision_recall(predictions, labels, token_id):
     return precision, recall
 
 
-def compute_metrics_for_position(eval_pred, compute_result=True):
+def compute_metrics_for_position(self, eval_pred, compute_result=True):
     predictions, labels = eval_pred
     predictions = predictions.argmax(-1)  # Convert logits to predicted ids
 
     # Flatten the outputs and labels for simpler comparison
-    flat_predictions = predictions.numpy().flatten()
-    flat_labels = labels.numpy().flatten()
+    flat_predictions = predictions.detach().numpy().flatten()
+    flat_labels = labels.detach().numpy().flatten()
     
     # Compute precision and recall for the specific token
-    specific_token_id = tokenizer.additional_special_tokens_ids[0]
+    specific_token_id = self.tokenizer.additional_special_tokens_ids[0]
     precision, recall = compute_precision_recall(flat_predictions, flat_labels, specific_token_id)
 
     return {"precision": precision, "recall": recall}
@@ -193,11 +193,6 @@ if __name__ == "__main__":
         **basic_args.additional_model_config
     )
     
-    # if torch.cuda.is_available():
-    #     if torch.cuda.device_count() > 1:
-    #         self.full_model = torch.nn.DataParallel(self.full_model)
-    #         self.full_model.cuda()
-    #         self.device = torch.device("cuda")
     model.to(training_args.device)
 
     dataset = load_dataset("json", data_dir=basic_args.dataset_dir)
