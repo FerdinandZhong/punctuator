@@ -72,7 +72,7 @@ def compute_precision_recall(predictions, labels, token_id):
     return precision, recall
 
 
-def compute_metrics_for_position(eval_pred):
+def compute_metrics_for_position(eval_pred, compute_result=True):
     predictions, labels = eval_pred
     predictions = predictions.argmax(-1)  # Convert logits to predicted ids
 
@@ -198,7 +198,7 @@ if __name__ == "__main__":
 
     shifted_label_dataset = dataset.map(shift_labels, fn_kwargs={
         "launched_tokenizer": tokenizer,
-        "llm_instruction": llm_instructions[basic_args.model_collection]
+        "llm_instruction": llm_instructions[model_collection]
     })
 
     data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding="longest")
@@ -209,13 +209,14 @@ if __name__ == "__main__":
         train_dataset=shifted_label_dataset["train"],
         eval_dataset=shifted_label_dataset["validation"],
         tokenizer=tokenizer,
-        compute_metrics=compute_metrics_for_position
+        compute_metrics=compute_metrics_for_position,
+        data_collator=data_collator,
     )
 
     trainer.train()
 
     model.save_pretrained(training_args.output_dir)
-    tokenizer.save_pretrained(training_args.output_dir))
+    tokenizer.save_pretrained(training_args.output_dir)
 
 
 
