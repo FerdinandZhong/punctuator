@@ -192,7 +192,13 @@ if __name__ == "__main__":
         basic_args.tokenizer_name,
         **basic_args.additional_model_config
     )
-
+    
+    # if torch.cuda.is_available():
+    #     if torch.cuda.device_count() > 1:
+    #         self.full_model = torch.nn.DataParallel(self.full_model)
+    #         self.full_model.cuda()
+    #         self.device = torch.device("cuda")
+    model.to(training_args.device)
 
     dataset = load_dataset("json", data_dir=basic_args.dataset_dir)
 
@@ -202,7 +208,7 @@ if __name__ == "__main__":
     })
 
     data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding="longest")
-
+        
     trainer = Trainer(
         model=model,
         args = training_args,
