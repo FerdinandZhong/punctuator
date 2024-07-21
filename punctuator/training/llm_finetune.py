@@ -72,13 +72,13 @@ def compute_precision_recall(predictions, labels, token_id):
     return precision, recall
 
 
-def compute_metrics_for_position(self, eval_pred, compute_result=True):
+def compute_metrics_for_position(eval_pred, compute_result=True):
     predictions, labels = eval_pred
     predictions = predictions.argmax(-1)  # Convert logits to predicted ids
 
     # Flatten the outputs and labels for simpler comparison
-    flat_predictions = predictions.detach().numpy().flatten()
-    flat_labels = labels.detach().numpy().flatten()
+    flat_predictions = predictions.detach().cpu().numpy().flatten()
+    flat_labels = labels.detach().cpu().numpy().flatten()
     
     # Compute precision and recall for the specific token
     specific_token_id = self.tokenizer.additional_special_tokens_ids[0]
