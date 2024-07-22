@@ -14,3 +14,4 @@ data/llm_datasets/output_labels/test.json filter=lfs diff=lfs merge=lfs -text
 data/llm_datasets/output_labels/training.json filter=lfs diff=lfs merge=lfs -text
 data/llm_datasets/output_labels/validation.json filter=lfs diff=lfs merge=lfs -text
 data/llm_datasets/special_token/ filter=lfs diff=lfs merge=lfs -text
+data/llm_datasets/direct_restoration/ filter=lfs diff=lfs merge=lfs -text
