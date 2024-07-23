@@ -1,19 +1,23 @@
 import json
 import logging
-import torch
+import warnings
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Optional, Union, List
+from typing import List, Optional, Union
 
 import numpy as np
+import torch
 from datasets import load_dataset
+from sklearn.metrics import accuracy_score, classification_report
 from transformers import HfArgumentParser, Trainer, TrainingArguments
 from transformers.data import DataCollatorForSeq2Seq
-from sklearn.metrics import accuracy_score, classification_report
-from punctuator.utils import Models, model_type
-import warnings
 
-warnings.filterwarnings("ignore", message="Was asked to gather along dimension 0, but all input tensors were scalars; will instead unsqueeze and return a vector.")
+from punctuator.utils import Models, model_type
+
+warnings.filterwarnings(
+    "ignore",
+    message="Was asked to gather along dimension 0, but all input tensors were scalars; will instead unsqueeze and return a vector.",
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,18 +47,46 @@ def _convert_str_dict(passed_value: dict):
     return passed_value
 
 
-def compute_metrics(eval_pred, compute_result=True, specific_tokens_ids=[], specific_tokens=[]):
+class MetricsAccumulator:
+    def __init__(self):
+        self.reset()
+
+    def update(self, new_metrics):
+        for key, value in new_metrics.items():
+            if key in self.metrics:
+                self.metrics[key].append(value)
+            else:
+                self.metrics[key] = [value]
+
+    def compute_summary(self):
+        summary = {}
+        for key, values in self.metrics.items():
+            summary[key] = sum(values) / len(values)  # Average for simplicity
+        return summary
+
+    def reset(self):
+        self.metrics = {}
+
+
+def compute_metrics(
+    eval_pred,
+    compute_result=True,
+    metrics_accumulator=None,
+    specific_tokens_ids=[],
+    specific_tokens=[],
+    tokenizer=None,
+):
     predictions, labels = eval_pred
     predictions = predictions.argmax(-1)  # Convert logits to predicted ids
-    
+
     # Flatten the outputs and labels for simpler comparison
     flat_predictions = predictions.cpu().numpy().flatten()
     flat_labels = labels.cpu().numpy().flatten()
-    
+
     reduce_ignored = flat_labels >= 0
     true_labels = flat_labels[reduce_ignored]  # remove ignored -100
     true_preds = flat_predictions[reduce_ignored]
-        
+
     accuracy = accuracy_score(flat_labels, flat_predictions)
 
     report = classification_report(
@@ -64,13 +96,20 @@ def compute_metrics(eval_pred, compute_result=True, specific_tokens_ids=[], spec
         digits=4,
         target_names=specific_tokens,
         zero_division=1,
-        output_dict=True
+        output_dict=True,
     )
-    
+
     if np.random.rand() < 0.005:  # Roughly once per 200 calls
-        print("Text Preds:", tokenizer.batch_decode(true_preds, skip_special_tokens=False))
-        print("Text Labels:", tokenizer.batch_decode(true_labels, skip_special_tokens=False))
-        print(f"Shape of labels: {true_labels.shape} ---- Shape if preds: {true_preds.shape}")
+        print(
+            "Text Preds:", tokenizer.batch_decode(true_preds, skip_special_tokens=False)
+        )
+        print(
+            "Text Labels:",
+            tokenizer.batch_decode(true_labels, skip_special_tokens=False),
+        )
+        print(
+            f"Shape of labels: {true_labels.shape} ---- Shape if preds: {true_preds.shape}"
+        )
         print("validation report: \n %s", report)
 
     result = {}
@@ -79,9 +118,17 @@ def compute_metrics(eval_pred, compute_result=True, specific_tokens_ids=[], spec
         for key, value in metrics_details.items():
             result[f"{token}_{key}"] = value
 
-    result.update({f"micro_avg_{key}": value for key, value in report["micro avg"].items()})
+    result.update(
+        {f"micro_avg_{key}": value for key, value in report["micro avg"].items()}
+    )
 
     result["overal_accuracy"] = accuracy
+
+    if not compute_result:
+        metrics_accumulator.update(result)
+    else:
+        result = metrics_accumulator.compute_summary()
+        metrics_accumulator.reset()
     return result
 
 
@@ -122,9 +169,9 @@ class BasicArguments:
         default_factory=dict, metadata={"help": "additional config for model"}
     )
     specific_tokens: Optional[List[str]] = field(
-        default_factory=list, metadata={"help": "specific tokens for evaluation metrics"}
+        default_factory=list,
+        metadata={"help": "specific tokens for evaluation metrics"},
     )
-    
 
     def __post_init__(self):
         for field in _VALID_DICT_FIELDS:
@@ -184,13 +231,15 @@ if __name__ == "__main__":
     if basic_args.additional_special_tokens:
         tokenizer.add_special_tokens(basic_args.additional_special_tokens)
         model.resize_token_embeddings(len(tokenizer))
-        
-        index_of_dot = tokenizer.convert_tokens_to_ids('.')
+
+        index_of_dot = tokenizer.convert_tokens_to_ids(".")
         for new_token in basic_args.additional_special_tokens:
             index_of_new = tokenizer.convert_tokens_to_ids(new_token)
             with torch.no_grad():
-                model.model.embed_tokens.weight[index_of_new] = model.model.embed_tokens.weight[index_of_dot].clone()
-            
+                model.model.embed_tokens.weight[index_of_new] = (
+                    model.model.embed_tokens.weight[index_of_dot].clone()
+                )
+
     model.to(training_args.device)
 
     dataset = load_dataset("json", data_dir=basic_args.dataset_dir)
@@ -204,14 +253,15 @@ if __name__ == "__main__":
     )
 
     data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding="longest")
-    
+
     specific_tokens_ids = []
     for token in basic_args.specific_tokens:
         specific_tokens_ids.append(tokenizer.convert_tokens_to_ids(token))
-    
+
     print(specific_tokens_ids)
     print(basic_args.specific_tokens)
-        
+
+    metrics_accumulator = MetricsAccumulator()
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -220,8 +270,10 @@ if __name__ == "__main__":
         tokenizer=tokenizer,
         compute_metrics=partial(
             compute_metrics,
+            metrics_accumulator=metrics_accumulator,
             specific_tokens_ids=specific_tokens_ids,
-            specific_tokens=basic_args.specific_tokens
+            specific_tokens=basic_args.specific_tokens,
+            tokenizer=tokenizer
         ),
         data_collator=data_collator,
     )

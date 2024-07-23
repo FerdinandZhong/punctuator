@@ -67,9 +67,9 @@ def text_lines_cleaning(
     logger.info("clean up text file line by line.")
     logger.info("replace email with <EMAIL>")
     logger.info("replace url with <URL>")
-    logger.info("replace currency with <CURRENCY>")
-    logger.info("replace telephone with <TEL>")
-    logger.info("replace number with <NUM>")
+    # logger.info("replace currency with <CURRENCY>")
+    # logger.info("replace telephone with <TEL>")
+    # logger.info("replace number with <NUM>")
 
     pbar = tqdm(input_lines)
     for line in pbar:
@@ -86,9 +86,9 @@ def text_lines_cleaning(
 
         line = replace(line, URL, URL_TOKEN)
 
-        line = replace(line, CURRENCY, CURRENCY_TOKEN)
+        # line = replace(line, CURRENCY, CURRENCY_TOKEN)
 
-        line = replace(line, TELEPHONE, TELEPHONE_TOKEN)
+        # line = replace(line, TELEPHONE, TELEPHONE_TOKEN)
 
         translator = str.maketrans({key: None for key in removed_punctuations})
         space_translator = str.maketrans(
