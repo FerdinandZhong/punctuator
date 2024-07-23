@@ -1,15 +1,22 @@
 import json
 import logging
+import torch
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 import numpy as np
 from datasets import load_dataset
 from transformers import HfArgumentParser, Trainer, TrainingArguments
 from transformers.data import DataCollatorForSeq2Seq
-
+from sklearn.metrics import accuracy_score, classification_report
 from punctuator.utils import Models, model_type
+import warnings
+
+warnings.filterwarnings("ignore", message="Was asked to gather along dimension 0, but all input tensors were scalars; will instead unsqueeze and return a vector.")
+
+logger = logging.getLogger(__name__)
+
 
 _VALID_DICT_FIELDS = [
     "additional_special_tokens",
@@ -36,47 +43,46 @@ def _convert_str_dict(passed_value: dict):
     return passed_value
 
 
-def compute_precision_recall(predictions, labels, token_id):
-    # Convert to NumPy arrays if not already
-    predictions = np.array(predictions)
-    labels = np.array(labels)
-
-    # Identify where predictions and labels are equal to the specific token
-    pred_token_positions = predictions == token_id
-    label_token_positions = labels == token_id
-
-    # True positives: The token is correctly predicted
-    true_positives = np.sum(pred_token_positions & label_token_positions)
-
-    # Predicted positives (where the model predicted the specific token)
-    predicted_positives = np.sum(pred_token_positions)
-
-    # Actual positives (where the true label is the specific token)
-    actual_positives = np.sum(label_token_positions)
-
-    # Calculate precision and recall
-    precision = true_positives / predicted_positives if predicted_positives > 0 else 0
-    recall = true_positives / actual_positives if actual_positives > 0 else 0
-
-    return precision, recall
-
-
-def compute_metrics_for_position(
-    eval_pred, compute_result=True, specific_token_id=None
-):
+def compute_metrics(eval_pred, compute_result=True, specific_tokens_ids=[], specific_tokens=[]):
     predictions, labels = eval_pred
     predictions = predictions.argmax(-1)  # Convert logits to predicted ids
-
+    
     # Flatten the outputs and labels for simpler comparison
-    flat_predictions = predictions.detach().cpu().numpy().flatten()
-    flat_labels = labels.detach().cpu().numpy().flatten()
+    flat_predictions = predictions.cpu().numpy().flatten()
+    flat_labels = labels.cpu().numpy().flatten()
+    
+    reduce_ignored = flat_labels >= 0
+    true_labels = flat_labels[reduce_ignored]  # remove ignored -100
+    true_preds = flat_predictions[reduce_ignored]
+        
+    accuracy = accuracy_score(flat_labels, flat_predictions)
 
-    # Compute precision and recall for the specific token
-    precision, recall = compute_precision_recall(
-        flat_predictions, flat_labels, specific_token_id
+    report = classification_report(
+        true_labels,
+        true_preds,
+        labels=specific_tokens_ids,
+        digits=4,
+        target_names=specific_tokens,
+        zero_division=1,
+        output_dict=True
     )
+    
+    if np.random.rand() < 0.005:  # Roughly once per 200 calls
+        print("Text Preds:", tokenizer.batch_decode(true_preds, skip_special_tokens=False))
+        print("Text Labels:", tokenizer.batch_decode(true_labels, skip_special_tokens=False))
+        print(f"Shape of labels: {true_labels.shape} ---- Shape if preds: {true_preds.shape}")
+        print("validation report: \n %s", report)
 
-    return {"precision": precision, "recall": recall}
+    result = {}
+    for token in specific_tokens:
+        metrics_details = report[token]
+        for key, value in metrics_details.items():
+            result[f"{token}_{key}"] = value
+
+    result.update({f"micro_avg_{key}": value for key, value in report["micro avg"].items()})
+
+    result["overal_accuracy"] = accuracy
+    return result
 
 
 @dataclass
@@ -92,6 +98,7 @@ class BasicArguments:
         additional_special_tokens (dict)
         additional_tokenizer_config (dict)
         additional_model_config (dict)
+        specific_tokens (list)
     """
 
     model_name: str = field(
@@ -114,6 +121,10 @@ class BasicArguments:
     additional_model_config: Optional[Union[dict, str]] = field(
         default_factory=dict, metadata={"help": "additional config for model"}
     )
+    specific_tokens: Optional[List[str]] = field(
+        default_factory=list, metadata={"help": "specific tokens for evaluation metrics"}
+    )
+    
 
     def __post_init__(self):
         for field in _VALID_DICT_FIELDS:
@@ -125,9 +136,6 @@ class BasicArguments:
                 # Convert str values to types if applicable
                 loaded_dict = _convert_str_dict(loaded_dict)
                 setattr(self, field, loaded_dict)
-
-
-logger = logging.getLogger(__name__)
 
 
 llm_instructions = {
@@ -170,12 +178,19 @@ if __name__ == "__main__":
     tokenizer = model_collection.tokenizer.from_pretrained(
         basic_args.tokenizer_name, **basic_args.additional_tokenizer_config
     )
-    if basic_args.additional_special_tokens:
-        tokenizer.add_special_tokens(basic_args.additional_special_tokens)
     model = model_collection.model.from_pretrained(
         basic_args.tokenizer_name, **basic_args.additional_model_config
     )
-
+    if basic_args.additional_special_tokens:
+        tokenizer.add_special_tokens(basic_args.additional_special_tokens)
+        model.resize_token_embeddings(len(tokenizer))
+        
+        index_of_dot = tokenizer.convert_tokens_to_ids('.')
+        for new_token in basic_args.additional_special_tokens:
+            index_of_new = tokenizer.convert_tokens_to_ids(new_token)
+            with torch.no_grad():
+                model.model.embed_tokens.weight[index_of_new] = model.model.embed_tokens.weight[index_of_dot].clone()
+            
     model.to(training_args.device)
 
     dataset = load_dataset("json", data_dir=basic_args.dataset_dir)
@@ -189,7 +204,14 @@ if __name__ == "__main__":
     )
 
     data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding="longest")
-
+    
+    specific_tokens_ids = []
+    for token in basic_args.specific_tokens:
+        specific_tokens_ids.append(tokenizer.convert_tokens_to_ids(token))
+    
+    print(specific_tokens_ids)
+    print(basic_args.specific_tokens)
+        
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -197,8 +219,9 @@ if __name__ == "__main__":
         eval_dataset=shifted_label_dataset["validation"],
         tokenizer=tokenizer,
         compute_metrics=partial(
-            compute_metrics_for_position,
-            specific_token_id=tokenizer.additional_special_tokens_ids[0],
+            compute_metrics,
+            specific_tokens_ids=specific_tokens_ids,
+            specific_tokens=basic_args.specific_tokens
         ),
         data_collator=data_collator,
     )
