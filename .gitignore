@@ -141,6 +141,7 @@ runs/**
 */runs/**
 logs/**
 data/**
+!data/llm_datasets/special_token/**
 
 notebooks/**
 
