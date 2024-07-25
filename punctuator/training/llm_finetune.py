@@ -98,17 +98,27 @@ def compute_metrics(
         zero_division=1,
         output_dict=True,
     )
-
+    
+    pred_text = tokenizer.batch_decode(true_preds, skip_special_tokens=False)
+    label_text = tokenizer.batch_decode(true_labels, skip_special_tokens=False)
+    
+    min_len = min(len(pred_text), len(label_text))
+    
+    # Calculate the number of matching words in the range of the shorter sentence
+    matches = sum(1 for w1, w2 in zip(pred_text[:min_len], label_text[:min_len]) if w1 == w2)
+    
+    # Compute accuracy based on the shorter sentence
+    text_accuracy = matches / min_len if min_len else 0
+    
     if np.random.rand() < 0.005:  # Roughly once per 200 calls
         print(
-            "Text Preds:", tokenizer.batch_decode(true_preds, skip_special_tokens=False)
+            "Text Preds:", "".join(pred_text)
         )
         print(
-            "Text Labels:",
-            tokenizer.batch_decode(true_labels, skip_special_tokens=False),
+            "Text Labels:", "".join(label_text)
         )
         print(
-            f"Shape of labels: {true_labels.shape} ---- Shape if preds: {true_preds.shape}"
+            f"Shape of labels: {true_labels.shape} ---- Shape of preds: {true_preds.shape}"
         )
         print("validation report: \n %s", report)
 
@@ -116,11 +126,13 @@ def compute_metrics(
     for token in specific_tokens:
         metrics_details = report[token]
         for key, value in metrics_details.items():
-            result[f"{token}_{key}"] = value
+            if key in ["precision", "recall", "f1-score"]:
+                result[f"{token}_{key}"] = value
 
-    result.update(
-        {f"micro_avg_{key}": value for key, value in report["micro avg"].items()}
-    )
+    # result.update(
+    #     {f"micro_avg_{key}": value for key, value in report["micro avg"].items()}
+    # )
+    result["text_accuracy"] = text_accuracy
 
     result["overal_accuracy"] = accuracy
 
@@ -187,9 +199,9 @@ class BasicArguments:
 
 llm_instructions = {
     Models.QWEN2.value: (
-        "<|im_start|>system\n"
-        + "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.<|im_end|>\n"  # noqa E501
-        + "{instruction}"
+        # "<|im_start|>system\n"
+        # + "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.<|im_end|>\n"  # noqa E501
+        "{instruction}"
         + "<|im_start|>user\n{input}<|im_end|>\n"
         + "<|im_start|>assistant\n"
     )
@@ -243,7 +255,7 @@ if __name__ == "__main__":
     model.to(training_args.device)
 
     dataset = load_dataset("json", data_dir=basic_args.dataset_dir)
-
+    
     shifted_label_dataset = dataset.map(
         shift_labels,
         fn_kwargs={
