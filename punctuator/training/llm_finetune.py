@@ -11,6 +11,7 @@ from datasets import load_dataset
 from sklearn.metrics import accuracy_score, classification_report
 from transformers import HfArgumentParser, Trainer, TrainingArguments
 from transformers.data import DataCollatorForSeq2Seq
+from torch.nn import CrossEntropyLoss
 
 from punctuator.utils import Models, model_type
 
@@ -146,6 +147,7 @@ class BasicArguments:
         additional_tokenizer_config (dict)
         additional_model_config (dict)
         specific_tokens (list)
+        compute_loss_in_chunk (bool)
     """
 
     model_name: str = field(
@@ -171,6 +173,10 @@ class BasicArguments:
     specific_tokens: Optional[List[str]] = field(
         default_factory=list,
         metadata={"help": "specific tokens for evaluation metrics"},
+    )
+    compute_loss_in_chunk : bool = field(
+        default=False,
+        metadata={"help": "Whether to compute loss in chunk"},
     )
 
     def __post_init__(self):
@@ -215,6 +221,81 @@ def shift_labels(sample, launched_tokenizer, llm_instruction):
     sample.pop("output")
     return sample
 
+
+class CustomTrainer(Trainer):
+    def _chunk_loss(self, logits, labels):
+        _, seq_length = labels.shape # dim 0 is the batch_size
+
+        # Prepare to calculate loss every 5 tokens
+        loss_fct = CrossEntropyLoss()
+        total_loss = 0.0
+
+        # Calculate loss for every 5-token segment in each sequence in the batch
+        step = 5
+        for i in range(0, seq_length - step + 1, step):
+            # Only consider the segment if it's full (i.e., has 'step' tokens)
+            if i + step <= seq_length:
+                # Slice to get the segment of logits and corresponding labels
+                logits_segment = logits[:, i:i+step, :].contiguous()
+                labels_segment = labels[:, i:i+step].contiguous()
+
+                # Reshape for loss calculation
+                logits_flat = logits_segment.view(-1, logits_segment.size(-1))
+                labels_flat = labels_segment.view(-1)
+
+                # Calculate and accumulate the loss
+                segment_loss = loss_fct(logits_flat, labels_flat)
+                total_loss += segment_loss
+
+        # Average the loss over the number of segments
+        total_loss /= (seq_length // step)
+
+        return total_loss
+
+    def compute_loss(self, model, inputs, return_outputs=False):
+        """
+        How the loss is computed by Trainer. By default, all models return the loss in the first element.
+
+        Subclass and override for custom behavior.
+        """
+        if self.label_smoother is not None and "labels" in inputs:
+            labels = inputs.pop("labels")
+        else:
+            labels = None
+        outputs = model(**inputs)
+
+        logits = outputs.logits
+        labels = inputs["labels"]
+
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+
+        if labels is not None:
+            unwrapped_model = self.accelerator.unwrap_model(model)
+            if _is_peft_model(unwrapped_model):
+                model_name = unwrapped_model.base_model.model._get_name()
+            else:
+                model_name = unwrapped_model._get_name()
+            if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
+                loss = self.label_smoother(outputs, labels, shift_labels=True)
+            else:
+                loss = self.label_smoother(outputs, labels)
+        else:
+            if isinstance(outputs, dict) and "loss" not in outputs:
+                raise ValueError(
+                    "The model did not return a loss from the inputs, only the following keys: "
+                    f"{','.join(outputs.keys())}. For reference, the inputs it received are {','.join(inputs.keys())}."
+                )
+            # We don't use .loss here since the model may return tuples instead of ModelOutput.
+            loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+        chunk_loss = self._chunk_loss
+        
+        total_loss = chunk_loss + loss
+        return (total_loss, outputs) if return_outputs else total_loss
+    
 
 if __name__ == "__main__":
     parser = HfArgumentParser((TrainingArguments, BasicArguments))
@@ -262,7 +343,12 @@ if __name__ == "__main__":
     print(basic_args.specific_tokens)
 
     metrics_accumulator = MetricsAccumulator()
-    trainer = Trainer(
+    if basic_args.compute_loss_in_chunk:
+        trainer_cls = CustomTrainer
+    else:
+        trainer_cls = Trainer
+        
+    trainer = trainer_cls(
         model=model,
         args=training_args,
         train_dataset=shifted_label_dataset["train"],
