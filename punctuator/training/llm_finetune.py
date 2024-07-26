@@ -10,7 +10,7 @@ import torch
 from datasets import load_dataset
 from sklearn.metrics import accuracy_score, classification_report
 from transformers import HfArgumentParser, Trainer, TrainingArguments
-from transformers.trainer import _is_peft_model, MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+from transformers.trainer import _is_peft_model, MODEL_FOR_CAUSAL_LM_MAPPING_NAMES, LabelSmoother
 from transformers.data import DataCollatorForSeq2Seq
 from torch.nn import CrossEntropyLoss
 
@@ -237,7 +237,8 @@ def shift_labels(sample, launched_tokenizer, llm_instruction):
 
 class CustomTrainer(Trainer):
     def _chunk_loss(self, logits, labels):
-        _, seq_length = labels.shape # dim 0 is the batch_size
+        batch_size, seq_length = labels.shape # dim 0 is the batch_size
+        print(batch_size, seq_length)
 
         # Prepare to calculate loss every 5 tokens
         loss_fct = CrossEntropyLoss()
@@ -258,6 +259,8 @@ class CustomTrainer(Trainer):
 
                 # Calculate and accumulate the loss
                 segment_loss = loss_fct(logits_flat, labels_flat)
+                if torch.isnan(segment_loss):
+                    segment_loss = torch.tensor(0.0, dtype=segment_loss.dtype, device=segment_loss.device)
                 total_loss += segment_loss
 
         # Average the loss over the number of segments
@@ -271,6 +274,8 @@ class CustomTrainer(Trainer):
 
         Subclass and override for custom behavior.
         """
+        if self.label_smoother is None:
+            self.label_smoother = LabelSmoother(epsilon=0.1)
         if self.label_smoother is not None and "labels" in inputs:
             labels = inputs.pop("labels")
         else:
@@ -278,7 +283,6 @@ class CustomTrainer(Trainer):
         outputs = model(**inputs)
 
         logits = outputs.logits
-        labels = inputs["labels"]
 
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
