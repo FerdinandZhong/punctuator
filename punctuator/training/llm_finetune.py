@@ -10,6 +10,7 @@ import torch
 from datasets import load_dataset
 from sklearn.metrics import accuracy_score, classification_report
 from transformers import HfArgumentParser, Trainer, TrainingArguments
+from transformers.trainer import _is_peft_model, MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
 from transformers.data import DataCollatorForSeq2Seq
 from torch.nn import CrossEntropyLoss
 
@@ -303,7 +304,7 @@ class CustomTrainer(Trainer):
             # We don't use .loss here since the model may return tuples instead of ModelOutput.
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
-        chunk_loss = self._chunk_loss
+        chunk_loss = self._chunk_loss(logits, labels)
         
         total_loss = chunk_loss + loss
         return (total_loss, outputs) if return_outputs else total_loss
@@ -359,7 +360,7 @@ if __name__ == "__main__":
         trainer_cls = CustomTrainer
     else:
         trainer_cls = Trainer
-        
+
     trainer = trainer_cls(
         model=model,
         args=training_args,
