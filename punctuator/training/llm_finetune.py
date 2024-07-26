@@ -161,6 +161,7 @@ class BasicArguments:
         additional_model_config (dict)
         specific_tokens (list)
         compute_loss_in_chunk (bool)
+        chunk_size (int)
     """
 
     model_name: str = field(
@@ -187,9 +188,13 @@ class BasicArguments:
         default_factory=list,
         metadata={"help": "specific tokens for evaluation metrics"},
     )
-    compute_loss_in_chunk : bool = field(
+    compute_loss_in_chunk: bool = field(
         default=False,
         metadata={"help": "Whether to compute loss in chunk"},
+    )
+    chunk_size: int = field(
+        default=5,
+        metadata={"help": "chunk size for compute chunk loss"}
     )
 
     def __post_init__(self):
@@ -238,14 +243,13 @@ def shift_labels(sample, launched_tokenizer, llm_instruction):
 class CustomTrainer(Trainer):
     def _chunk_loss(self, logits, labels):
         batch_size, seq_length = labels.shape # dim 0 is the batch_size
-        print(batch_size, seq_length)
 
         # Prepare to calculate loss every 5 tokens
         loss_fct = CrossEntropyLoss()
         total_loss = 0.0
 
         # Calculate loss for every 5-token segment in each sequence in the batch
-        step = 5
+        step = self.chunk_size
         for i in range(0, seq_length - step + 1, step):
             # Only consider the segment if it's full (i.e., has 'step' tokens)
             if i + step <= seq_length:
@@ -259,12 +263,15 @@ class CustomTrainer(Trainer):
 
                 # Calculate and accumulate the loss
                 segment_loss = loss_fct(logits_flat, labels_flat)
+                
                 if torch.isnan(segment_loss):
                     segment_loss = torch.tensor(0.0, dtype=segment_loss.dtype, device=segment_loss.device)
                 total_loss += segment_loss
 
         # Average the loss over the number of segments
         total_loss /= (seq_length // step)
+        if np.random.rand() < 0.005:
+            print(f"total chunk loss: {total_loss}")
 
         return total_loss
 
@@ -275,7 +282,7 @@ class CustomTrainer(Trainer):
         Subclass and override for custom behavior.
         """
         if self.label_smoother is None:
-            self.label_smoother = LabelSmoother(epsilon=0.1)
+            self.label_smoother = LabelSmoother(epsilon=self.args.label_smoothing_factor)
         if self.label_smoother is not None and "labels" in inputs:
             labels = inputs.pop("labels")
         else:
@@ -380,6 +387,7 @@ if __name__ == "__main__":
         ),
         data_collator=data_collator,
     )
+    trainer.chunk_size = basic_args.chunk_size
 
     trainer.train()
 
