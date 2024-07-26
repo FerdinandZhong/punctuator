@@ -13,6 +13,7 @@ from transformers import HfArgumentParser, Trainer, TrainingArguments
 from transformers.trainer import _is_peft_model, MODEL_FOR_CAUSAL_LM_MAPPING_NAMES, LabelSmoother
 from transformers.data import DataCollatorForSeq2Seq
 from torch.nn import CrossEntropyLoss
+from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
 
 from punctuator.utils import Models, model_type
 
@@ -161,6 +162,8 @@ class BasicArguments:
         additional_model_config (dict)
         specific_tokens (list)
         compute_loss_in_chunk (bool)
+        use_peft (bool)
+        peft_config (str)
     """
 
     model_name: str = field(
@@ -192,6 +195,7 @@ class BasicArguments:
         metadata={"help": "Whether to compute loss in chunk"},
     )
 
+    
     def __post_init__(self):
         for field in _VALID_DICT_FIELDS:
             passed_value = getattr(self, field)
@@ -316,7 +320,8 @@ class CustomTrainer(Trainer):
 
 if __name__ == "__main__":
     parser = HfArgumentParser((TrainingArguments, BasicArguments))
-    training_args, basic_args = parser.parse_args_into_dataclasses()
+    peft_config, training_args, basic_args = parser.parse_args_into_dataclasses()
+
 
     model_collection = model_type(basic_args.model_type).value
 
