@@ -1,0 +1,9 @@
+{
+    "r": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "bias": "none",
+    "task_type": "CAUSAL_LM",
+    "inference_mode": false, 
+    "target_modules": ["k_proj", "q_proj", "v_proj", "o_proj"]
+}
