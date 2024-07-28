@@ -17,6 +17,9 @@ from transformers import (
     RobertaForTokenClassification,
     RobertaModel,
     RobertaTokenizerFast,
+    LlamaConfig,
+    AutoTokenizer,
+    AutoModelForCausalLM
 )
 from transformers.models.qwen2 import Qwen2ForCausalLM
 
@@ -109,4 +112,8 @@ class Models(Enum):
 
     QWEN2 = ModelCollection(
         Qwen2Config, Qwen2TokenizerFast, Qwen2ForCausalLM, Qwen2ForCausalLM
+    )
+
+    LLAMA31 = ModelCollection(
+        LlamaConfig, AutoTokenizer, AutoModelForCausalLM, AutoModelForCausalLM
     )

@@ -221,15 +221,15 @@ class BasicArguments:
                 setattr(self, field, loaded_dict)
 
 
-llm_instructions = {
-    Models.QWEN2.value: (
-        # "<|im_start|>system\n"
-        # + "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.<|im_end|>\n"  # noqa E501
-        "{instruction}"
-        + "<|im_start|>user\n{input}<|im_end|>\n"
-        + "<|im_start|>assistant\n"
-    )
-}
+# llm_instructions = {
+#     Models.QWEN2.value: (
+#         # "<|im_start|>system\n"
+#         # + "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.<|im_end|>\n"  # noqa E501
+#         "{instruction}"
+#         + "<|im_start|>user\n{input}<|im_end|>\n"
+#         + "<|im_start|>assistant\n"
+#     )
+# }
 
 
 def shift_labels(sample, launched_tokenizer):
@@ -371,7 +371,6 @@ if __name__ == "__main__":
         shift_labels,
         fn_kwargs={
             "launched_tokenizer": tokenizer,
-            "llm_instruction": llm_instructions[model_collection],
         },
     )
 
