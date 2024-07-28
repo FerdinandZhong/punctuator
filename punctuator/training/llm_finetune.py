@@ -337,8 +337,11 @@ if __name__ == "__main__":
     model_collection = model_type(basic_args.model_type).value
 
     tokenizer = model_collection.tokenizer.from_pretrained(
-        basic_args.tokenizer_name, **basic_args.additional_tokenizer_config
+        basic_args.tokenizer_name, padding_side="left", truncation_side="left", **basic_args.additional_tokenizer_config
     )
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        
     model = model_collection.model.from_pretrained(
         basic_args.tokenizer_name, **basic_args.additional_model_config
     )
