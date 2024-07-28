@@ -232,10 +232,8 @@ llm_instructions = {
 }
 
 
-def shift_labels(sample, launched_tokenizer, llm_instruction):
-    full_input = llm_instruction.format(
-        instruction=sample["instruction"], input=sample["input"]
-    )
+def shift_labels(sample, launched_tokenizer):
+    full_input = launched_tokenizer.apply_chat_template(sample.pop("chat_messages"), tokenize=False, add_generation_prompt=True)
     tokenized_input = launched_tokenizer(full_input)
     input_attention_mask = tokenized_input["attention_mask"]
     prompt_input_ids = tokenized_input["input_ids"]
@@ -246,8 +244,6 @@ def shift_labels(sample, launched_tokenizer, llm_instruction):
     sample["input_ids"] = prompt_input_ids + output_ids
     sample["labels"] = [-100] * len(prompt_input_ids) + output_ids
     sample["attention_mask"] = input_attention_mask + output_attention_mask
-    sample.pop("instruction")
-    sample.pop("input")
     sample.pop("output")
     return sample
 
