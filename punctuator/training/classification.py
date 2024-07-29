@@ -25,14 +25,14 @@ class InputsDataset(Dataset):
     # TODO: tokenize the data while loading
     def __getitem__(self, idx):
 
-        return self.inputs[idx]
+        return (self.inputs[idx], ["*"]*len(self.inputs[idx]))
 
     def __len__(self):
         return len(self.inputs)
 
 
 def collate_fn(batch):
-    return {"inputs": batch}
+    return {"inputs": batch[0]}
 
 
 class ClassificationArguments(BaseModel):
@@ -58,6 +58,7 @@ class ClassificationArguments(BaseModel):
     batch_size: int
     use_gpu: Optional[bool] = True
     label2id: Optional[Dict]
+    id2label: Optional[Dict]
     gpu_device: Optional[int] = environ.get("CUDA_VISIBLE_DEVICES", 0)
     additional_tokenizer_config: Optional[Dict] = {}
     additional_model_config: Optional[Dict] = {}
