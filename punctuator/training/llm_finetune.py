@@ -113,7 +113,7 @@ def compute_metrics(
     # Compute accuracy based on the shorter sentence
     text_accuracy = matches / min_len if min_len else 0
     
-    if np.random.rand() < 0.005:  # Roughly once per 200 calls
+    if np.random.rand() < 0.002:  # Roughly once per 500 calls
         print(
             "Text Preds:", "".join(pred_text)
         )
