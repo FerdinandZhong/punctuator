@@ -189,7 +189,7 @@ class ClassificationArguments(BaseModel):
             gpu_device=args.gpu_device,
             label2id=label2id,
             additional_tokenizer_config=additional_tokenizer_config,
-            only_compute_positional_recal=args.only_compute_positional_recal,
+            output_file_path=args.output_file_path,
         )
 
         return pipeline_args
@@ -255,7 +255,7 @@ class ClassificationPipeline:
 
         steps = 0
 
-        file_writer = open(self.arguments.output_file_path, "r")
+        file_writer = open(self.arguments.output_file_path, "w")
 
         with tqdm(total=len(val_loader)) as pbar:
             for batch in val_loader:
