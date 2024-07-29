@@ -8,14 +8,18 @@ from typing import List, Optional, Union
 import numpy as np
 import torch
 from datasets import load_dataset
+from peft import LoraConfig, get_peft_model
 from sklearn.metrics import accuracy_score, classification_report
-from transformers import HfArgumentParser, Trainer, TrainingArguments
-from transformers.trainer import _is_peft_model, MODEL_FOR_CAUSAL_LM_MAPPING_NAMES, LabelSmoother
-from transformers.data import DataCollatorForSeq2Seq
 from torch.nn import CrossEntropyLoss
-from peft import LoraConfig, PeftModel, get_peft_model, prepare_model_for_kbit_training
+from transformers import HfArgumentParser, Trainer, TrainingArguments
+from transformers.data import DataCollatorForSeq2Seq
+from transformers.trainer import (
+    MODEL_FOR_CAUSAL_LM_MAPPING_NAMES,
+    LabelSmoother,
+    _is_peft_model,
+)
 
-from punctuator.utils import Models, model_type
+from punctuator.utils import model_type
 
 warnings.filterwarnings(
     "ignore",
@@ -101,25 +105,23 @@ def compute_metrics(
         zero_division=1,
         output_dict=True,
     )
-    
+
     pred_text = tokenizer.batch_decode(true_preds, skip_special_tokens=False)
     label_text = tokenizer.batch_decode(true_labels, skip_special_tokens=False)
-    
+
     min_len = min(len(pred_text), len(label_text))
-    
+
     # Calculate the number of matching words in the range of the shorter sentence
-    matches = sum(1 for w1, w2 in zip(pred_text[:min_len], label_text[:min_len]) if w1 == w2)
-    
+    matches = sum(
+        1 for w1, w2 in zip(pred_text[:min_len], label_text[:min_len]) if w1 == w2
+    )
+
     # Compute accuracy based on the shorter sentence
     text_accuracy = matches / min_len if min_len else 0
-    
+
     if np.random.rand() < 0.002:  # Roughly once per 500 calls
-        print(
-            "Text Preds:", "".join(pred_text)
-        )
-        print(
-            "Text Labels:", "".join(label_text)
-        )
+        print("Text Preds:", "".join(pred_text))
+        print("Text Labels:", "".join(label_text))
         print(
             f"Shape of labels: {true_labels.shape} ---- Shape of preds: {true_preds.shape}"
         )
@@ -196,19 +198,14 @@ class BasicArguments:
         metadata={"help": "Whether to compute loss in chunk"},
     )
     chunk_size: int = field(
-        default=5,
-        metadata={"help": "chunk size for compute chunk loss"}
+        default=5, metadata={"help": "chunk size for compute chunk loss"}
     )
     use_peft: bool = field(
         default=False,
         metadata={"help": "Whether to use peft"},
     )
-    peft_config: str = field(
-        default=None,
-        metadata={"help": "file of lora config"}
-    )
+    peft_config: str = field(default=None, metadata={"help": "file of lora config"})
 
-    
     def __post_init__(self):
         for field in _VALID_DICT_FIELDS:
             passed_value = getattr(self, field)
@@ -233,7 +230,9 @@ class BasicArguments:
 
 
 def shift_labels(sample, launched_tokenizer):
-    full_input = launched_tokenizer.apply_chat_template(sample.pop("chat_messages"), tokenize=False, add_generation_prompt=True)
+    full_input = launched_tokenizer.apply_chat_template(
+        sample.pop("chat_messages"), tokenize=False, add_generation_prompt=True
+    )
     tokenized_input = launched_tokenizer(full_input)
     input_attention_mask = tokenized_input["attention_mask"]
     prompt_input_ids = tokenized_input["input_ids"]
@@ -250,7 +249,7 @@ def shift_labels(sample, launched_tokenizer):
 
 class CustomTrainer(Trainer):
     def _chunk_loss(self, logits, labels):
-        _, seq_length = labels.shape # dim 0 is the batch_size
+        _, seq_length = labels.shape  # dim 0 is the batch_size
 
         # Prepare to calculate loss every 5 tokens
         loss_fct = CrossEntropyLoss()
@@ -262,8 +261,8 @@ class CustomTrainer(Trainer):
             # Only consider the segment if it's full (i.e., has 'step' tokens)
             if i + step <= seq_length:
                 # Slice to get the segment of logits and corresponding labels
-                logits_segment = logits[:, i:i+step, :].contiguous()
-                labels_segment = labels[:, i:i+step].contiguous()
+                logits_segment = logits[:, i : i + step, :].contiguous()
+                labels_segment = labels[:, i : i + step].contiguous()
 
                 # Reshape for loss calculation
                 logits_flat = logits_segment.view(-1, logits_segment.size(-1))
@@ -271,13 +270,15 @@ class CustomTrainer(Trainer):
 
                 # Calculate and accumulate the loss
                 segment_loss = loss_fct(logits_flat, labels_flat)
-                
+
                 if torch.isnan(segment_loss):
-                    segment_loss = torch.tensor(0.0, dtype=segment_loss.dtype, device=segment_loss.device)
+                    segment_loss = torch.tensor(
+                        0.0, dtype=segment_loss.dtype, device=segment_loss.device
+                    )
                 total_loss += segment_loss
 
         # Average the loss over the number of segments
-        total_loss /= (seq_length // step)
+        total_loss /= seq_length // step
         if np.random.rand() < 0.005:
             print(f"total chunk loss: {total_loss}")
 
@@ -290,7 +291,9 @@ class CustomTrainer(Trainer):
         Subclass and override for custom behavior.
         """
         if self.label_smoother is None:
-            self.label_smoother = LabelSmoother(epsilon=self.args.label_smoothing_factor)
+            self.label_smoother = LabelSmoother(
+                epsilon=self.args.label_smoothing_factor
+            )
         if self.label_smoother is not None and "labels" in inputs:
             labels = inputs.pop("labels")
         else:
@@ -324,24 +327,26 @@ class CustomTrainer(Trainer):
             loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
 
         chunk_loss = self._chunk_loss(logits, labels)
-        
+
         total_loss = chunk_loss + loss
         return (total_loss, outputs) if return_outputs else total_loss
-    
+
 
 if __name__ == "__main__":
     parser = HfArgumentParser((TrainingArguments, BasicArguments))
     training_args, basic_args = parser.parse_args_into_dataclasses()
 
-
     model_collection = model_type(basic_args.model_type).value
 
     tokenizer = model_collection.tokenizer.from_pretrained(
-        basic_args.tokenizer_name, padding_side="left", truncation_side="left", **basic_args.additional_tokenizer_config
+        basic_args.tokenizer_name,
+        padding_side="left",
+        truncation_side="left",
+        **basic_args.additional_tokenizer_config,
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
-        
+
     model = model_collection.model.from_pretrained(
         basic_args.tokenizer_name, **basic_args.additional_model_config
     )
@@ -353,23 +358,21 @@ if __name__ == "__main__":
         for new_token in basic_args.additional_special_tokens:
             index_of_new = tokenizer.convert_tokens_to_ids(new_token)
             with torch.no_grad():
-                model.model.embed_tokens.weight[index_of_new] = (
-                    model.model.embed_tokens.weight[index_of_dot].clone()
-                )
+                model.model.embed_tokens.weight[
+                    index_of_new
+                ] = model.model.embed_tokens.weight[index_of_dot].clone()
 
     if basic_args.use_peft:
         with open(basic_args.peft_config, "r") as config_file:
             peft_config_json = json.load(config_file)
-        peft_config = LoraConfig(
-            **peft_config_json
-        )
+        peft_config = LoraConfig(**peft_config_json)
         model = get_peft_model(model, peft_config)
-    
+
     model.print_trainable_parameters()
     model.to(training_args.device)
 
     dataset = load_dataset("json", data_dir=basic_args.dataset_dir)
-    
+
     shifted_label_dataset = dataset.map(
         shift_labels,
         fn_kwargs={
@@ -403,7 +406,7 @@ if __name__ == "__main__":
             metrics_accumulator=metrics_accumulator,
             specific_tokens_ids=specific_tokens_ids,
             specific_tokens=basic_args.specific_tokens,
-            tokenizer=tokenizer
+            tokenizer=tokenizer,
         ),
         data_collator=data_collator,
     )

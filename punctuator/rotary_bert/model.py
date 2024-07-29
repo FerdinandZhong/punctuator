@@ -126,10 +126,12 @@ class RotaryBertSelfAttention(BertSelfAttention):
             value_layer = self.transpose_for_scores(self.value(hidden_states))
             if sinusoidal_pos is not None:
                 if self.rotary_value:
-                    query_layer, key_layer, value_layer = (
-                        self.apply_rotary_position_embeddings(
-                            sinusoidal_pos, query_layer, key_layer, value_layer
-                        )
+                    (
+                        query_layer,
+                        key_layer,
+                        value_layer,
+                    ) = self.apply_rotary_position_embeddings(
+                        sinusoidal_pos, query_layer, key_layer, value_layer
                     )
                 else:
                     query_layer, key_layer, _ = self.apply_rotary_position_embeddings(
@@ -550,9 +552,11 @@ class RotaryBertModel(BertModel):
         # If a 2D or 3D attention mask is provided for the cross-attention
         # we need to make broadcastable to [batch_size, num_heads, seq_length, seq_length]
         if self.config.is_decoder and encoder_hidden_states is not None:
-            encoder_batch_size, encoder_sequence_length, _ = (
-                encoder_hidden_states.size()
-            )
+            (
+                encoder_batch_size,
+                encoder_sequence_length,
+                _,
+            ) = encoder_hidden_states.size()
             encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
             if encoder_attention_mask is None:
                 encoder_attention_mask = torch.ones(encoder_hidden_shape, device=device)
@@ -606,7 +610,6 @@ class RotaryBertModel(BertModel):
 
 
 class RotaryBertFocalLossForTokenClassification(BertForTokenClassification):
-
     def __init__(self, config, backbone_model: BertModel = None):
         super().__init__(config)
         if backbone_model is not None:

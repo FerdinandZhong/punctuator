@@ -132,10 +132,7 @@ class EvaluationArguments(BaseModel):
         with open(args.evaluation_data_file_path, "r", encoding="utf-8") as file:
             evaluation_raw = file.readlines()
 
-        (
-            evaluation_corpus,
-            evaluation_tags,
-        ) = process_data(
+        (evaluation_corpus, evaluation_tags,) = process_data(
             evaluation_raw, args.min_sequence_length, args.max_sequence_length
         )
 
@@ -256,10 +253,11 @@ class EvaluationPipeline:
                 recall_position_preds, recall_position_labels = self._position_results(
                     logits, labels, attention_mask, result_type="recall"
                 )
-                precision_position_preds, precision_position_labels = (
-                    self._position_results(
-                        logits, labels, attention_mask, result_type="precision"
-                    )
+                (
+                    precision_position_preds,
+                    precision_position_labels,
+                ) = self._position_results(
+                    logits, labels, attention_mask, result_type="precision"
                 )
                 if not self.arguments.only_compute_positional_recal:
                     total_preds.extend(true_preds)

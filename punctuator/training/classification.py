@@ -7,15 +7,13 @@ from typing import Dict, List, Optional
 import numpy as np
 import torch
 from pydantic import BaseModel
-from sklearn.metrics import classification_report
 from torch._C import device  # noqa: F401
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from punctuator.utils import NORMAL_TOKEN_TAG, Models, model_type, str2bool, is_ascii
+from punctuator.utils import Models, model_type, str2bool
 
 from .finetuning_data_process import process_data
-from .punctuation_data_process import EncodingDataset
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +35,7 @@ def collate_fn(batch):
     return {"inputs": batch}
 
 
-class EvaluationArguments(BaseModel):
+class ClassificationArguments(BaseModel):
     """Arguments pertaining to which model/config we are going to do the validation
 
     Args:
@@ -143,11 +141,7 @@ class EvaluationArguments(BaseModel):
             default=False,
             help="whether only compute the positional recall",
         )
-        parser.add_argument(
-            "--output_file_path",
-            type=str,
-            help="Output"
-        )
+        parser.add_argument("--output_file_path", type=str, help="Output")
         return parser
 
     @staticmethod
@@ -155,10 +149,7 @@ class EvaluationArguments(BaseModel):
         with open(args.evaluation_data_file_path, "r", encoding="utf-8") as file:
             evaluation_raw = file.readlines()
 
-        (
-            corpus,
-            _,
-        ) = process_data(
+        (corpus, _,) = process_data(
             evaluation_raw, args.min_sequence_length, args.max_sequence_length
         )
 
@@ -188,7 +179,7 @@ class EvaluationArguments(BaseModel):
         except (json.JSONDecodeError, TypeError):
             additional_tokenizer_config = {}
         # Set the attributes from the parsed arguments.
-        evaluation_pipeline_args = cls(
+        pipeline_args = cls(
             corpus=corpus,
             model=model_type(args.model),
             model_weight_name=args.model_weight_name,
@@ -201,7 +192,7 @@ class EvaluationArguments(BaseModel):
             only_compute_positional_recal=args.only_compute_positional_recal,
         )
 
-        return evaluation_pipeline_args
+        return pipeline_args
 
 
 class ClassificationPipeline:
@@ -244,7 +235,6 @@ class ClassificationPipeline:
 
         return self
 
-
     def _tokenize(self, batch_inputs):
         encoding = self.tokenizer(
             batch_inputs,
@@ -280,14 +270,13 @@ class ClassificationPipeline:
                 outputs = self.classifier(input_ids, attention_mask=attention_mask)
                 logits = outputs.logits
 
-                offset_marks = self._mark_ignored_tokens(tokenized_inputs["offset_mapping"])
-                true_preds = self._post_process(
-                    logits, attention_mask, offset_marks
+                offset_marks = self._mark_ignored_tokens(
+                    tokenized_inputs["offset_mapping"]
                 )
+                true_preds = self._post_process(logits, attention_mask, offset_marks)
                 for label_id, token in zip(true_preds, tokens):
                     label = self.id2label[label_id]
                     file_writer.write("%s\t%s\n" % (token, label))
-                
 
                 pbar.update(1)
 
@@ -305,10 +294,9 @@ class ClassificationPipeline:
             samples.append(sample_marks.tolist())
 
         return np.array(samples).flatten()
-    
 
-    # def run(self):
-    #     self.tokenize().validate()
+    def run(self):
+        self.generate_dataset().inference()
 
     def _post_process(self, logits, attention_mask, offset_marks):
         if self.device.type == "cuda":
@@ -322,4 +310,3 @@ class ClassificationPipeline:
         true_preds = not_padding_preds[reduce_ignored]
 
         return true_preds
-

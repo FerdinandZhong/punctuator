@@ -4,6 +4,8 @@ from enum import Enum
 from transformers import (
     AutoConfig,
     AutoModel,
+    AutoModelForCausalLM,
+    AutoTokenizer,
     BertConfig,
     BertForTokenClassification,
     BertModel,
@@ -11,15 +13,13 @@ from transformers import (
     DistilBertConfig,
     DistilBertForTokenClassification,
     DistilBertTokenizerFast,
+    LlamaConfig,
     Qwen2Config,
     Qwen2TokenizerFast,
     RobertaConfig,
     RobertaForTokenClassification,
     RobertaModel,
     RobertaTokenizerFast,
-    LlamaConfig,
-    AutoTokenizer,
-    AutoModelForCausalLM
 )
 from transformers.models.qwen2 import Qwen2ForCausalLM
 

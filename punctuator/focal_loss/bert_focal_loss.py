@@ -7,7 +7,6 @@ from transformers.models.bert.modeling_bert import *
 
 
 class BertFocalLossForTokenClassification(BertForTokenClassification):
-
     def __init__(self, config, backbone_model: BertModel = None):
         super().__init__(config)
         self.num_labels = config.num_labels

@@ -246,10 +246,7 @@ class PreTrainingArguments(BaseModel):
         with open(args.validation_data_file_path, "r", encoding="utf-8") as file:
             val_raw = file.readlines()
 
-        (
-            training_corpus,
-            training_has_punctuation_list,
-        ) = process_data(
+        (training_corpus, training_has_punctuation_list,) = process_data(
             training_raw, args.min_sequence_length, args.max_sequence_length
         )
 

@@ -8,9 +8,13 @@ from punctuator.training.general_ner_train_focal_loss import (
 parser = argparse.ArgumentParser()
 parser = NERTrainingArguments.add_cli_args(parser)
 training_args = parser.parse_args()
-training_corpus, validation_corpus, training_tags, validation_tags, label2id = (
-    NERTrainingArguments.generate_corpus(training_args)
-)
+(
+    training_corpus,
+    validation_corpus,
+    training_tags,
+    validation_tags,
+    label2id,
+) = NERTrainingArguments.generate_corpus(training_args)
 
 training_args = NERTrainingArguments.from_cli_args(
     args=training_args,
