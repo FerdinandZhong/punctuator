@@ -115,6 +115,9 @@ class ClassificationArguments(BaseModel):
             "--label2id", type=str, required=True, help="Label to ID mapping"
         )
         parser.add_argument(
+            "--id2label", type=str, required=True, help="ID to Label mapping"
+        )
+        parser.add_argument(
             "--use_gpu",
             type=str2bool,
             default=True,
@@ -155,12 +158,15 @@ class ClassificationArguments(BaseModel):
 
         try:
             label2id = json.loads(args.label2id)
+            id2label = json.loads(args.id2label)
         except json.JSONDecodeError:
             label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
+            id2label = {0: "O", 1: "PUNCT"}
 
         return (
             corpus,
             label2id,
+            id2label
         )
 
     @classmethod
@@ -169,6 +175,7 @@ class ClassificationArguments(BaseModel):
         args: argparse.Namespace,
         corpus: List[List[str]],
         label2id: Dict,
+        id2label: Dict
     ):
         try:
             additional_model_config = json.loads(args.additional_model_config)
@@ -188,6 +195,7 @@ class ClassificationArguments(BaseModel):
             additional_model_config=additional_model_config,
             gpu_device=args.gpu_device,
             label2id=label2id,
+            id2label=id2label,
             additional_tokenizer_config=additional_tokenizer_config,
             only_compute_positional_recal=args.only_compute_positional_recal,
         )
@@ -216,7 +224,7 @@ class ClassificationPipeline:
             self.label2id = arguments.label2id
         else:
             self.label2id = self.classifier.config.label2id
-        self.id2label = {id: label for label, id in self.label2id.items()}
+        self.id2label = arguments.id2label
         self.dataset = None
 
     def generate_dataset(self):
