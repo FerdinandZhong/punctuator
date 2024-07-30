@@ -25,14 +25,14 @@ class InputsDataset(Dataset):
     # TODO: tokenize the data while loading
     def __getitem__(self, idx):
 
-        return (self.inputs[idx], ["*"]*len(self.inputs[idx]))
+        return self.inputs[idx]
 
     def __len__(self):
         return len(self.inputs)
 
 
 def collate_fn(batch):
-    return {"inputs": batch[0]}
+    return {"inputs": batch}
 
 
 class ClassificationArguments(BaseModel):
@@ -257,7 +257,7 @@ class ClassificationPipeline:
     def inference(self):
         logger.info("start inference")
         val_loader = DataLoader(
-            self.dataset, batch_size=self.arguments.batch_size, shuffle=False
+            self.dataset, batch_size=self.arguments.batch_size, shuffle=False, collate_fn=collate_fn,
         )
         # self.classifier.train(False)
         self.classifier.eval()
@@ -270,8 +270,10 @@ class ClassificationPipeline:
             for batch in val_loader:
                 steps += 1
                 pbar.set_description(f"Processing batch: {steps}")
-
-                tokens = batch["inputs"]
+                
+                tokens = []
+                for input in batch["inputs"]:
+                    tokens.extend(input)
                 tokenized_inputs = self._tokenize(batch["inputs"])
 
                 input_ids = tokenized_inputs["input_ids"].to(self.device).long()
@@ -310,12 +312,12 @@ class ClassificationPipeline:
     def _post_process(self, logits, attention_mask, offset_marks):
         if self.device.type == "cuda":
             max_preds = logits.argmax(dim=2).detach().cpu().numpy().flatten()
-            flattened_attention = attention_mask.detach().cpu().numpy().flatten()
+            # flattened_attention = attention_mask.detach().cpu().numpy().flatten()
         else:
             max_preds = logits.argmax(dim=2).detach().numpy().flatten()
-            flattened_attention = attention_mask.detach().numpy().flatten()
-        not_padding_preds = max_preds[flattened_attention == 1]
+            # flattened_attention = attention_mask.detach().numpy().flatten()
+        # not_padding_preds = max_preds[flattened_attention == 1]
         reduce_ignored = offset_marks >= 0
-        true_preds = not_padding_preds[reduce_ignored]
+        true_preds = max_preds[reduce_ignored]
 
         return true_preds
