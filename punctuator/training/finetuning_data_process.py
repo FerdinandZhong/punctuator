@@ -44,8 +44,9 @@ def _read_data(
         processed_line = read_line(line)
         try:
             assert len(processed_line) == 2, "bad line"
-            regex = re.compile("[^\u4e00-\u9fa5a-zA-Z0-9-+']")
-            token = regex.sub("", processed_line[0])
+            # regex = re.compile("[^\u4e00-\u9fa5a-zA-Z0-9-+']")
+            # token = regex.sub("", processed_line[0])
+            token = processed_line[0]
             if token:
                 token_doc.append(token)
                 tag_doc.append(processed_line[1])
