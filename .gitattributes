@@ -31,3 +31,6 @@ data/newly_code_switching/training.txt filter=lfs diff=lfs merge=lfs -text
 data/newly_code_switching/test.txt filter=lfs diff=lfs merge=lfs -text
 data/newly_code_switching/validation.txt filter=lfs diff=lfs merge=lfs -text
 data/llm_datasets/bert_binary_output/test.txt filter=lfs diff=lfs merge=lfs -text
+data/newly_code_switching_binary/training.txt filter=lfs diff=lfs merge=lfs -text
+data/newly_code_switching_binary/validation.txt filter=lfs diff=lfs merge=lfs -text
+data/newly_code_switching_binary/test.txt filter=lfs diff=lfs merge=lfs -text

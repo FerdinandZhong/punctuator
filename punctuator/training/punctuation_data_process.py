@@ -40,8 +40,9 @@ def _read_data(source_data, target_sequence_length) -> Union[List[List], List[st
         processed_line = read_line(line)
         try:
             assert len(processed_line) == 2, "bad line"
-            regex = re.compile("[^a-zA-Z0-9-+']")
-            token = regex.sub("", processed_line[0])
+            # regex = re.compile("[^a-zA-Z0-9-+']")
+            # token = regex.sub("", processed_line[0])
+            token = processed_line[1].lower()
             if token:
                 token_doc.append(token)
                 tag_doc.append(processed_line[1])
