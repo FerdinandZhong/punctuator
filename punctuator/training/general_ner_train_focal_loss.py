@@ -399,6 +399,7 @@ class NERTrainingPipeline:
             self.device = torch.device("cpu")
             self.is_parallel = False
 
+        logger.info(f"device: {self.device}")
         self.total_steps = 0
         self.class_weights = None
         self.train_encoded_tags = None
@@ -535,7 +536,7 @@ class NERTrainingPipeline:
 
                 start_time = time.time()
 
-                self.classifier.train()
+                # self.classifier.train()
 
                 train_loss, train_acc = self._train(train_loader, optim, scheduler)
                 val_loss, val_acc = self._train(val_loader, optim, scheduler, True)
@@ -703,6 +704,7 @@ class NERTrainingPipeline:
         epoch_acc = 0
         if is_val:
             self.classifier.train(False)
+            self.classifier.cuda()
         else:
             self.classifier.train()
 

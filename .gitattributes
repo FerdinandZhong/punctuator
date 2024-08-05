@@ -37,3 +37,6 @@ data/newly_code_switching_binary/test.txt filter=lfs diff=lfs merge=lfs -text
 data/new_code_switching_binary/training.txt filter=lfs diff=lfs merge=lfs -text
 data/new_code_switching_binary/test.txt filter=lfs diff=lfs merge=lfs -text
 data/new_code_switching_binary/validation.txt filter=lfs diff=lfs merge=lfs -text
+data/new_code_switching_binary/binary_output_test.txt filter=lfs diff=lfs merge=lfs -text
+data/new_code_switching_binary/binary_output_training.txt filter=lfs diff=lfs merge=lfs -text
+data/new_code_switching_binary/binary_output_validation.txt filter=lfs diff=lfs merge=lfs -text
