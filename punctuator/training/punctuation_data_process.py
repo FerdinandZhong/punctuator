@@ -1,5 +1,4 @@
 import logging
-import re
 from typing import List, Union
 
 import numpy as np

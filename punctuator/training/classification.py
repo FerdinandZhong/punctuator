@@ -164,11 +164,7 @@ class ClassificationArguments(BaseModel):
             label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
             id2label = {0: "O", 1: "PUNCT"}
 
-        return (
-            corpus,
-            label2id,
-            id2label
-        )
+        return (corpus, label2id, id2label)
 
     @classmethod
     def from_cli_args(
@@ -176,7 +172,7 @@ class ClassificationArguments(BaseModel):
         args: argparse.Namespace,
         corpus: List[List[str]],
         label2id: Dict,
-        id2label: Dict
+        id2label: Dict,
     ):
         try:
             additional_model_config = json.loads(args.additional_model_config)
@@ -257,7 +253,10 @@ class ClassificationPipeline:
     def inference(self):
         logger.info("start inference")
         val_loader = DataLoader(
-            self.dataset, batch_size=self.arguments.batch_size, shuffle=False, collate_fn=collate_fn,
+            self.dataset,
+            batch_size=self.arguments.batch_size,
+            shuffle=False,
+            collate_fn=collate_fn,
         )
         # self.classifier.train(False)
         self.classifier.eval()
@@ -270,7 +269,7 @@ class ClassificationPipeline:
             for batch in val_loader:
                 steps += 1
                 pbar.set_description(f"Processing batch: {steps}")
-                
+
                 tokens = []
                 for input in batch["inputs"]:
                     tokens.extend(input)
