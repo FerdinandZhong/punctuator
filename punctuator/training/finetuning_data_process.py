@@ -171,6 +171,7 @@ def read_data_after_step1(
     min_sequence_length,
     max_sequence_length,
     punct_special_token,
+    is_split_into_words=True
 ) -> Union[List[List], List[List]]:
     def read_line(text_line):
         return text_line.strip().split("\t")
@@ -185,16 +186,13 @@ def read_data_after_step1(
     text_labels = []
     text_step1_output = []
     text_step1_labels = []
-    with open(source_data, "r", encoding="utf-8") as data_file:
-        pbar = tqdm([line for line in data_file.readlines() if line.strip() != ""])
-    with open(step1_output, "r", encoding="utf-8") as step1_output_file:
-        step1_lines = step1_output_file.readlines()
-
+    pbar = tqdm(source_data)
+    
     for index, line in enumerate(pbar):
         if line == "\n":
             continue
         processed_line = read_line(line)
-        step1_output_line = step1_lines[index]
+        step1_output_line = step1_output[index]
         processed_step1_line = read_line(step1_output_line)
         try:
             assert len(processed_line) == 2, "bad line"
@@ -210,21 +208,25 @@ def read_data_after_step1(
                 text_step1_labels.append(1)
             else:
                 step1_token = token
-                texts_step1_labels.append(0)
+                text_step1_labels.append(0)
             text_step1_output.append(step1_token.lower())
 
         except AssertionError:
-            print(f"ignore the bad line: {line}, index: {index}")
+            logger.warning(f"ignore the bad line: {line}, index: {index}")
             continue
         line_index += 1
         target_sequence_length = randint(min_sequence_length, max_sequence_length)
         if len(text_wo_puncts) >= target_sequence_length:
-            texts_wo_puncts.append(
-                chinese_combine(" ".join(text_wo_puncts), [punct_special_token])
-            )
-            texts_step1_output.append(
-                chinese_combine(" ".join(text_step1_output), [punct_special_token])
-            )
+            if not is_split_into_words:
+                texts_wo_puncts.append(
+                    chinese_combine(" ".join(text_wo_puncts), [punct_special_token])
+                )
+                texts_step1_output.append(
+                    chinese_combine(" ".join(text_step1_output), [punct_special_token])
+                )
+            else:
+                texts_wo_puncts.append(text_wo_puncts)
+                texts_step1_output.append(text_step1_output)
             texts_labels.append(text_labels)
             texts_step1_labels.append(text_step1_labels)
 
@@ -236,18 +238,23 @@ def read_data_after_step1(
 
     try:
         if len(text_wo_puncts) > 0:
-            print(text_step1_output)
-            texts_wo_puncts.append(
-                chinese_combine(" ".join(text_wo_puncts), [punct_special_token])
-            )
-            texts_step1_output.append(
-                chinese_combine(" ".join(text_step1_output), [punct_special_token])
-            )
+            logger.debug(text_step1_labels)
+            logger.debug(text_step1_output)
+            if not is_split_into_words:
+                texts_wo_puncts.append(
+                    chinese_combine(" ".join(text_wo_puncts), [punct_special_token])
+                )
+                texts_step1_output.append(
+                    chinese_combine(" ".join(text_step1_output), [punct_special_token])
+                )
+            else:
+                texts_wo_puncts.append(text_wo_puncts)
+                texts_step1_output.append(text_step1_output)
             texts_labels.append(text_labels)
             texts_step1_labels.append(text_step1_labels)
             pbar.update(len(text_wo_puncts))
     except AssertionError:
-        print(f"error generating sequence: {text_wo_puncts}")
+        logger.warning(f"error generating sequence: {text_wo_puncts}")
 
     pbar.close()
 

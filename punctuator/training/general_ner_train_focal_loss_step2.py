@@ -107,6 +107,7 @@ class Step2NERTrainingArguments(BaseModel):
     tensorboard_log_dir: Optional[str] = "runs"
     use_class_weight: bool = True
     log_class_weight: bool = True
+    is_split_into_words: bool = True
 
     # model args
     additional_model_config: Optional[Dict]
@@ -143,7 +144,7 @@ class Step2NERTrainingArguments(BaseModel):
             help="Path to validation corpus file",
         )
         parser.add_argument(
-            "--special_punct",
+            "--punct_special_token",
             type=str,
             default="PUNCT",
             help="Special punctuation for processing step1 result",
@@ -260,6 +261,7 @@ class Step2NERTrainingArguments(BaseModel):
             default=True,
             help="Whether to assign weights to classes",
         )
+        
         # Model-specific arguments
         parser.add_argument(
             "--additional_model_config",
@@ -271,6 +273,12 @@ class Step2NERTrainingArguments(BaseModel):
             type=str,
             default="{}",
             help="JSON string of additional model config",
+        )
+        parser.add_argument(
+            "--is_split_into_words",
+            type=str2bool,
+            default=True,
+            help="Whether the input is split into words",
         )
         return parser
 
@@ -311,28 +319,30 @@ class Step2NERTrainingArguments(BaseModel):
 
         (
             training_corpus,
-            training_tags,
-            training_step1_features,
             _,
+            training_tags,
+            training_step1_features
         ) = read_data_after_step1(
             training_raw,
             training_step1_result,
             args.min_sequence_length,
             args.max_sequence_length,
             args.punct_special_token,
+            args.is_split_into_words
         )
 
         (
             validation_corpus,
-            validation_tags,
-            validation_step1_features,
             _,
+            validation_tags,
+            validation_step1_features
         ) = read_data_after_step1(
             val_raw,
             val_step1_result,
             args.min_sequence_length,
             args.max_sequence_length,
             args.punct_special_token,
+            args.is_split_into_words
         )
 
         try:
@@ -344,7 +354,8 @@ class Step2NERTrainingArguments(BaseModel):
 
         sample = training_corpus[0]
         logger.info("Corpus Sample: %s", sample)
-
+        logger.info("Step 1 result: %s", training_step1_features[0])
+        
         return (
             training_corpus,
             validation_corpus,
@@ -501,13 +512,13 @@ class Step2NERTrainingPipeline:
 
         self.train_encodings = self.tokenizer(
             self.arguments.training_corpus,
-            is_split_into_words=True,
+            is_split_into_words=self.arguments.is_split_into_words,
             return_offsets_mapping=True,
             padding=True,
         )
         self.val_encodings = self.tokenizer(
             self.arguments.validation_corpus,
-            is_split_into_words=True,
+            is_split_into_words=self.arguments.is_split_into_words,
             return_offsets_mapping=True,
             padding=True,
         )
