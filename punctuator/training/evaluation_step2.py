@@ -68,6 +68,12 @@ class EvaluationArguments(BaseModel):
             help="Path to training corpus file",
         )
         parser.add_argument(
+            "--punct_special_token",
+            type=str,
+            default="PUNCT",
+            help="Special punctuation for processing step1 result",
+        )
+        parser.add_argument(
             "--min_sequence_length",
             type=int,
             required=True,
