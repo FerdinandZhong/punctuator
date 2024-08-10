@@ -364,3 +364,135 @@ class RobertaFocalLossForTokenClassificationStep2(RobertaForTokenClassification)
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+
+
+class MLPStep2Classifier(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.activation = nn.Tanh()
+        self.output = nn.Linear(config.hidden_size, config.num_labels)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        # We "pool" the model by simply taking the hidden state corresponding
+        # to the first token.
+        first_token_tensor = hidden_states[:, 0]
+        output = self.dense(first_token_tensor)
+        output = self.activation(output)
+        output = self.output(output)
+        return output
+
+
+class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
+    def __init__(
+        self,
+        config,
+        backbone_model: BertFocalLossForTokenClassification,
+        freeze_encoder: bool = False,
+        use_kan: bool = False,
+    ):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+
+        self.bert = backbone_model.bert
+
+        if freeze_encoder:
+            for param in self.bert.parameters():
+                param.requires_grad = False
+
+        classifier_dropout = (
+            config.classifier_dropout
+            if config.classifier_dropout is not None
+            else config.hidden_dropout_prob
+        )
+        self.dropout = nn.Dropout(classifier_dropout)
+        if not use_kan:
+            self.classifier = MLPStep2Classifier(config)
+        self.post_init()
+        self._loss_fct = None
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        token_type_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        class_weights: Optional[torch.Tensor] = None,
+    ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
+
+        outputs = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        all_logits = []
+        if labels is not None:
+            total_loss = 0
+        else:
+            total_loss = None
+        num_sequences = 0
+
+        # Create a tensor to store restored logits
+        restored_logits = torch.full(
+            (token_type_ids.size(0), token_type_ids.size(1), self.num_labels),
+            float("-inf"),
+        )
+
+        # Set the first class to have the maximum probability by default (logit value of 0)
+        restored_logits[:, :, 0] = 0
+
+        # Loop through the batch
+        for batch_index in range(
+            token_type_ids.size(0)
+        ):  # Loop over the batch dimension
+            mask = token_type_ids[batch_index] > 0
+
+            selected_hiddenstates = outputs[batch_index][mask]
+            logits = self.classifier(selected_hiddenstates)
+            restored_logits[batch_index][mask] = logits
+
+            all_logits.append(restored_logits)
+
+            if labels is not None:
+                target_labels = labels[batch_index][mask]
+                total_loss += self._loss_fct(
+                    logits.view(-1, self.num_labels),
+                    target_labels.view(-1),
+                    class_weights,
+                )
+
+            num_sequences += 1
+
+        if labels is not None and num_sequences > 0:
+            mean_loss = total_loss / num_sequences
+        else:
+            mean_loss = total_loss
+
+        if not return_dict:
+            output = (logits,) + outputs[2:]
+            return ((mean_loss,) + output) if mean_loss is not None else output
+
+        final_logits = torch.cat(all_logits, dim=0) if all_logits else torch.tensor([])
+
+        return TokenClassifierOutput(
+            loss=mean_loss,
+            logits=final_logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )

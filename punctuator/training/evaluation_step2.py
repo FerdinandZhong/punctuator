@@ -145,22 +145,23 @@ class EvaluationArguments(BaseModel):
         with open(args.evaluation_data_file_path, "r", encoding="utf-8") as file:
             evaluation_raw = file.readlines()
 
-        with open(args.evaluation_step1_result_file_path, "r", encoding="utf-8") as file:
+        with open(
+            args.evaluation_step1_result_file_path, "r", encoding="utf-8"
+        ) as file:
             evaluation_step1_result = file.readlines()
-
 
         (
             evaluation_corpus,
             _,
             evaluation_tags,
-            evaluation_step1_features
+            evaluation_step1_features,
         ) = read_data_after_step1(
             evaluation_raw,
             evaluation_step1_result,
             args.min_sequence_length,
             args.max_sequence_length,
             args.punct_special_token,
-            args.is_split_into_words
+            args.is_split_into_words,
         )
 
         try:
@@ -254,9 +255,9 @@ class EvaluationPipeline:
         )
 
         self.dataset = Step2EncodingDataset(
-            self.encodings, 
+            self.encodings,
             self.evaluation_encoded_tags,
-            self.evaluation_encoded_step1_features
+            self.evaluation_encoded_step1_features,
         )
 
         return self
@@ -287,9 +288,9 @@ class EvaluationPipeline:
                 labels = batch["labels"].to(self.device)
                 step1_features = batch["step1_features"].to(self.device)
                 outputs = self.classifier(
-                    input_ids, 
+                    input_ids,
                     attention_mask=attention_mask,
-                    token_type_ids=step1_features
+                    token_type_ids=step1_features,
                 )
                 logits = outputs.logits
 

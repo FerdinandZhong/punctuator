@@ -171,7 +171,7 @@ def read_data_after_step1(
     min_sequence_length,
     max_sequence_length,
     punct_special_token,
-    is_split_into_words=True
+    is_split_into_words=True,
 ) -> Union[List[List], List[List]]:
     def read_line(text_line):
         return text_line.strip().split("\t")
@@ -187,7 +187,7 @@ def read_data_after_step1(
     text_step1_output = []
     text_step1_labels = []
     pbar = tqdm(source_data)
-    
+
     for index, line in enumerate(pbar):
         if line == "\n":
             continue

@@ -23,7 +23,10 @@ from transformers import (
 )
 from transformers.models.qwen2 import Qwen2ForCausalLM
 
-from punctuator.focal_loss.bert_focal_loss import BertFocalLossForTokenClassification
+from punctuator.focal_loss.bert_focal_loss import (
+    BertFocalLossForTokenClassification,
+    FocalLossForTokenClassificationStep2,
+)
 from punctuator.pykan.model import (
     BertKanForTokenClassification,
     BertKanForTokenClassification2,
@@ -116,4 +119,11 @@ class Models(Enum):
 
     LLAMA31 = ModelCollection(
         LlamaConfig, AutoTokenizer, AutoModelForCausalLM, AutoModelForCausalLM
+    )
+
+    STEP2_FOCAL_LOSS = ModelCollection(
+        BertConfig,
+        BertTokenizerFast,
+        FocalLossForTokenClassificationStep2,
+        BertFocalLossForTokenClassification,
     )

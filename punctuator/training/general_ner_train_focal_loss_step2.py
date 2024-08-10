@@ -112,6 +112,7 @@ class Step2NERTrainingArguments(BaseModel):
     # model args
     additional_model_config: Optional[Dict]
     additional_tokenizer_config: Optional[Dict] = {}
+    additional_classifier_kwargs: Optional[Dict] = {}
 
     @staticmethod
     def add_cli_args(
@@ -261,7 +262,7 @@ class Step2NERTrainingArguments(BaseModel):
             default=True,
             help="Whether to assign weights to classes",
         )
-        
+
         # Model-specific arguments
         parser.add_argument(
             "--additional_model_config",
@@ -279,6 +280,12 @@ class Step2NERTrainingArguments(BaseModel):
             type=str2bool,
             default=True,
             help="Whether the input is split into words",
+        )
+        parser.add_argument(
+            "--additional_classifier_kwargs",
+            type=str,
+            default="{}",
+            help="JSON string of additional classifier kwargs",
         )
         return parser
 
@@ -321,28 +328,28 @@ class Step2NERTrainingArguments(BaseModel):
             training_corpus,
             _,
             training_tags,
-            training_step1_features
+            training_step1_features,
         ) = read_data_after_step1(
             training_raw,
             training_step1_result,
             args.min_sequence_length,
             args.max_sequence_length,
             args.punct_special_token,
-            args.is_split_into_words
+            args.is_split_into_words,
         )
 
         (
             validation_corpus,
             _,
             validation_tags,
-            validation_step1_features
+            validation_step1_features,
         ) = read_data_after_step1(
             val_raw,
             val_step1_result,
             args.min_sequence_length,
             args.max_sequence_length,
             args.punct_special_token,
-            args.is_split_into_words
+            args.is_split_into_words,
         )
 
         try:
@@ -355,7 +362,7 @@ class Step2NERTrainingArguments(BaseModel):
         sample = training_corpus[0]
         logger.info("Corpus Sample: %s", sample)
         logger.info("Step 1 result: %s", training_step1_features[0])
-        
+
         return (
             training_corpus,
             validation_corpus,
@@ -386,6 +393,11 @@ class Step2NERTrainingArguments(BaseModel):
             additional_tokenizer_config = json.loads(args.additional_tokenizer_config)
         except (json.JSONDecodeError, TypeError):
             additional_tokenizer_config = {}
+        try:
+            additional_classifier_kwargs = json.loads(args.additional_classifier_kwargs)
+        except (json.JSONDecodeError, TypeError):
+            additional_classifier_kwargs = {}
+
         # Set the attributes from the parsed arguments.
         training_pipeline_args = cls(
             training_corpus=training_corpus,
@@ -403,6 +415,7 @@ class Step2NERTrainingArguments(BaseModel):
             model_storage_dir=args.model_storage_dir,
             intermediate_persist_step=args.intermediate_persist_step,
             additional_model_config=additional_model_config,
+            additional_classifier_kwargs=additional_classifier_kwargs,
             gpu_device=args.gpu_device,
             warm_up_steps=args.warm_up_steps,
             r_drop=args.r_drop,
@@ -460,13 +473,16 @@ class Step2NERTrainingPipeline:
                 config=self.model_config,
             )
             self.classifier = model_collection.model(
-                self.model_config, backbone_model=backbone_model
+                self.model_config,
+                backbone_model=backbone_model,
+                **training_arguments.additional_classifier_kwargs,
             )
 
         else:
             self.classifier = model_collection.model.from_pretrained(
                 training_arguments.model_weight_name,
                 config=self.model_config,
+                **training_arguments.additional_classifier_kwargs,
             )
 
         self.model_class = self.classifier.__class__.__name__
@@ -856,7 +872,10 @@ class Step2NERTrainingPipeline:
 
                 if self.arguments.r_drop:
                     outputs_1 = self.classifier(
-                        input_ids, attention_mask=attention_mask, labels=labels, token_type_ids=step1_features
+                        input_ids,
+                        attention_mask=attention_mask,
+                        labels=labels,
+                        token_type_ids=step1_features,
                     )
                     logits_1 = outputs_1.logits
                     if in_epoch_steps == 1:
@@ -899,7 +918,7 @@ class Step2NERTrainingPipeline:
                         attention_mask=attention_mask,
                         labels=labels,
                         class_weights=self.class_weights,
-                        token_type_ids=step1_features
+                        token_type_ids=step1_features,
                     )
                     logits = outputs.logits
                     loss = outputs.loss
