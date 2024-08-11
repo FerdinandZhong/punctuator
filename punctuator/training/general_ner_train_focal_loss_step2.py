@@ -470,7 +470,7 @@ class Step2NERTrainingPipeline:
         if training_arguments.load_backbone_only:
             backbone_model = model_collection.backbone_model.from_pretrained(
                 training_arguments.model_weight_name,
-                config=self.model_config,
+                # config=self.model_config,
             )
             self.classifier = model_collection.model(
                 self.model_config,
@@ -925,28 +925,30 @@ class Step2NERTrainingPipeline:
 
                 if self.is_parallel:
                     loss = loss.mean()
-
-                if not is_val:
-                    loss.backward()
-                    optim.step()
-                    if scheduler:
-                        scheduler.step()
-                    if self.total_steps % self.arguments.plot_steps == 0:
-                        self.tensorboard_writter.add_scalar(
-                            "Step Loss/train", loss, self.total_steps
+                
+                if loss is not None:
+                    if not is_val:
+                        loss.backward()
+                        optim.step()
+                        if scheduler:
+                            scheduler.step()
+                        if self.total_steps % self.arguments.plot_steps == 0:
+                            self.tensorboard_writter.add_scalar(
+                                "Step Loss/train", loss, self.total_steps
+                            )
+                    else:
+                        true_preds, true_labels = self._post_process(
+                            logits, labels, attention_mask
                         )
-                else:
-                    true_preds, true_labels = self._post_process(
-                        logits, labels, attention_mask
-                    )
-                    total_preds.extend(true_preds)
-                    total_labels.extend(true_labels)
+                        total_preds.extend(true_preds)
+                        total_labels.extend(true_labels)
+                        
+                    epoch_loss += loss.item()
+                    epoch_acc += self._accuracy(logits, attention_mask, labels)
+
 
                 self.total_steps += 1
-
-                epoch_loss += loss.item()
-                epoch_acc += self._accuracy(logits, attention_mask, labels)
-
+                
                 pbar.update(1)
                 pbar.set_postfix(
                     {
@@ -971,6 +973,7 @@ class Step2NERTrainingPipeline:
                     zero_division=1,
                 )
                 logger.info("validation report: \n %s", report)
+            torch.cuda.empty_cache()
 
         return epoch_loss / in_epoch_steps, epoch_acc / in_epoch_steps
 

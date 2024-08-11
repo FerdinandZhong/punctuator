@@ -27,7 +27,7 @@ class BertFocalLossForTokenClassification(BertForTokenClassification):
         self._loss_fct = None
 
     def set_loss_fct(self, focal_loss):
-        self._loss_fct = focal_loss
+        self._loss_fct = focal_loss.to(self.device)
 
     def forward(
         self,
@@ -376,8 +376,7 @@ class MLPStep2Classifier(nn.Module):
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         # We "pool" the model by simply taking the hidden state corresponding
         # to the first token.
-        first_token_tensor = hidden_states[:, 0]
-        output = self.dense(first_token_tensor)
+        output = self.dense(hidden_states)
         output = self.activation(output)
         output = self.output(output)
         return output
@@ -387,14 +386,18 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
     def __init__(
         self,
         config,
-        backbone_model: BertFocalLossForTokenClassification,
+        backbone_model: BertFocalLossForTokenClassification = None,
         freeze_encoder: bool = False,
         use_kan: bool = False,
     ):
         super().__init__(config)
         self.num_labels = config.num_labels
-
-        self.bert = backbone_model.bert
+        
+        if backbone_model is not None:
+            self.bert = backbone_model.bert
+        else:
+            self.bert = BertModel(config, add_pooling_layer=False)
+           
 
         if freeze_encoder:
             for param in self.bert.parameters():
@@ -440,8 +443,9 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
+        
+        sequence_output = outputs[0]
 
-        all_logits = []
         if labels is not None:
             total_loss = 0
         else:
@@ -452,7 +456,8 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         restored_logits = torch.full(
             (token_type_ids.size(0), token_type_ids.size(1), self.num_labels),
             float("-inf"),
-        )
+            device=labels.device
+        ).to(labels.device)
 
         # Set the first class to have the maximum probability by default (logit value of 0)
         restored_logits[:, :, 0] = 0
@@ -461,38 +466,40 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         for batch_index in range(
             token_type_ids.size(0)
         ):  # Loop over the batch dimension
+            
             mask = token_type_ids[batch_index] > 0
-
-            selected_hiddenstates = outputs[batch_index][mask]
-            logits = self.classifier(selected_hiddenstates)
+            selected_hiddenstates = sequence_output[batch_index][mask]
+            logits = self.classifier(selected_hiddenstates.cuda())
             restored_logits[batch_index][mask] = logits
-
-            all_logits.append(restored_logits)
 
             if labels is not None:
                 target_labels = labels[batch_index][mask]
-                total_loss += self._loss_fct(
-                    logits.view(-1, self.num_labels),
-                    target_labels.view(-1),
-                    class_weights,
-                )
+                try:
+                    total_loss += self._loss_fct(
+                        logits.view(-1, self.num_labels),
+                        target_labels.view(-1),
+                        class_weights.to(target_labels.device),
+                    )
+                except Exception as e:
+                    logger.warning(f"error for batch index: {batch_index}, {str(e)}")
+                    logger.warning(f"logits device: {logits.view(-1, self.num_labels).device}, labels device: {target_labels.device}")
+                    total_loss = None
+                    break
 
             num_sequences += 1
 
-        if labels is not None and num_sequences > 0:
+        if total_loss is not None and num_sequences > 0:
             mean_loss = total_loss / num_sequences
         else:
             mean_loss = total_loss
 
         if not return_dict:
-            output = (logits,) + outputs[2:]
+            output = (restored_logits,) + outputs[2:]
             return ((mean_loss,) + output) if mean_loss is not None else output
-
-        final_logits = torch.cat(all_logits, dim=0) if all_logits else torch.tensor([])
 
         return TokenClassifierOutput(
             loss=mean_loss,
-            logits=final_logits,
+            logits=restored_logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
