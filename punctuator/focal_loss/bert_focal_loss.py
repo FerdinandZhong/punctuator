@@ -455,7 +455,7 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         # Create a tensor to store restored logits
         restored_logits = torch.full(
             (token_type_ids.size(0), token_type_ids.size(1), self.num_labels),
-            float("-inf"),
+            float(-1),
             device=labels.device
         ).to(labels.device)
 
