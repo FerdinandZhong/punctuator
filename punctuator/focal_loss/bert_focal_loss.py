@@ -5,6 +5,7 @@ import torch.utils.checkpoint
 from transformers.modeling_outputs import TokenClassifierOutput
 from transformers.models.bert.modeling_bert import *
 from transformers.models.roberta.modeling_roberta import *
+from fastkan import FastKAN as KAN
 
 
 class BertFocalLossForTokenClassification(BertForTokenClassification):
@@ -397,7 +398,6 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             self.bert = backbone_model.bert
         else:
             self.bert = BertModel(config, add_pooling_layer=False)
-           
 
         if freeze_encoder:
             for param in self.bert.parameters():
@@ -411,6 +411,13 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         self.dropout = nn.Dropout(classifier_dropout)
         if not use_kan:
             self.classifier = MLPStep2Classifier(config)
+        else:
+            self.classifier = KAN(
+                [
+                    config.hidden_size,
+                    config.num_labels,
+                ]
+            )
         self.post_init()
         self._loss_fct = None
 
@@ -447,11 +454,10 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         sequence_output = outputs[0]
 
         if labels is not None:
-            total_loss = 0
+            labels[token_type_ids==1] = -100
         else:
-            total_loss = None
-        num_sequences = 0
-
+            mean_loss = None
+        
         # Create a tensor to store restored logits
         restored_logits = torch.full(
             (token_type_ids.size(0), token_type_ids.size(1), self.num_labels),
@@ -472,26 +478,33 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             logits = self.classifier(selected_hiddenstates.cuda())
             restored_logits[batch_index][mask] = logits
 
-            if labels is not None:
-                target_labels = labels[batch_index][mask]
-                try:
-                    total_loss += self._loss_fct(
-                        logits.view(-1, self.num_labels),
-                        target_labels.view(-1),
-                        class_weights.to(target_labels.device),
-                    )
-                except Exception as e:
-                    logger.warning(f"error for batch index: {batch_index}, {str(e)}")
-                    logger.warning(f"logits device: {logits.view(-1, self.num_labels).device}, labels device: {target_labels.device}")
-                    total_loss = None
-                    break
+        #     if labels is not None:
+        #         target_labels = labels[batch_index][mask]
+        #         try:
+        #             total_loss += self._loss_fct(
+        #                 logits.view(-1, self.num_labels),
+        #                 target_labels.view(-1),
+        #                 class_weights.to(target_labels.device),
+        #             )
+        #         except Exception as e:
+        #             logger.warning(f"error for batch index: {batch_index}, {str(e)}")
+        #             logger.warning(f"logits device: {logits.view(-1, self.num_labels).device}, labels device: {target_labels.device}")
+        #             total_loss = None
+        #             break
 
-            num_sequences += 1
+        #     num_sequences += 1
 
-        if total_loss is not None and num_sequences > 0:
-            mean_loss = total_loss / num_sequences
-        else:
-            mean_loss = total_loss
+        # if total_loss is not None and num_sequences > 0:
+        #     mean_loss = total_loss / num_sequences
+        # else:
+        #     mean_loss = total_loss
+        
+        if labels is not None:
+            mean_loss = self._loss_fct(
+                restored_logits.view(-1, self.num_labels),
+                labels.view(-1),
+                class_weights
+            )
 
         if not return_dict:
             output = (restored_logits,) + outputs[2:]
