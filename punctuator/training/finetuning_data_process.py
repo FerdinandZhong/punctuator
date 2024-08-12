@@ -18,7 +18,7 @@ SENTENCE_ENDINGS = ["PERIOD", "QUESTION"]
 
 
 def _read_data(
-    source_data, min_sequence_length, max_sequence_length
+    source_data, min_sequence_length, max_sequence_length, is_split_into_words=True
 ) -> Union[List[List], List[str]]:
     def read_line(text_line):
         return text_line.strip().split("\t")
@@ -62,7 +62,12 @@ def _read_data(
             try:
                 _verify_senquence(token_doc, target_sequence_length)
                 _verify_senquence(tag_doc, target_sequence_length)
-                token_docs.append(token_doc)
+                if not is_split_into_words:
+                    token_docs.append(
+                        chinese_combine(" ".join(token_doc))
+                    )
+                else:
+                    token_docs.append(token_doc)
                 tag_docs.append(tag_doc)
                 token_doc = []
                 tag_doc = []
@@ -74,7 +79,12 @@ def _read_data(
             pbar.update(len(token_doc))
     try:
         assert len(token_doc) == len(tag_doc), "Not equal length"
-        token_docs.append(token_doc)
+        if not is_split_into_words:
+            token_docs.append(
+                chinese_combine(" ".join(token_doc))
+            )
+        else:
+            token_docs.append(token_doc)
         tag_docs.append(tag_doc)
         pbar.update(len(token_doc))
     except AssertionError:
@@ -109,7 +119,7 @@ def unison_shuffled_copies(a, b):
     return a[p].tolist(), b[p].tolist()
 
 
-def process_data(source_data, min_sequence_length, max_sequence_length):
+def process_data(source_data, min_sequence_length, max_sequence_length, is_split_into_words=True):
     """
     Processes the input data to generate sequences of texts and corresponding tags within the specified minimum and maximum sequence lengths.
 
@@ -128,6 +138,7 @@ def process_data(source_data, min_sequence_length, max_sequence_length):
         source_data,
         min_sequence_length=min_sequence_length,
         max_sequence_length=max_sequence_length,
+        is_split_into_words=is_split_into_words
     )
     return texts, tags
 

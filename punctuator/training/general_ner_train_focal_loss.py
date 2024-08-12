@@ -101,6 +101,7 @@ class NERTrainingArguments(BaseModel):
     # model args
     additional_model_config: Optional[Dict]
     additional_tokenizer_config: Optional[Dict] = {}
+    is_split_into_words: bool = True
 
     @staticmethod
     def add_cli_args(
@@ -244,6 +245,12 @@ class NERTrainingArguments(BaseModel):
             default="{}",
             help="JSON string of additional model config",
         )
+        parser.add_argument(
+            "--is_split_into_words",
+            type=str2bool,
+            default=True,
+            help="Whether the input is split into words",
+        )
         return parser
 
     @staticmethod
@@ -255,13 +262,13 @@ class NERTrainingArguments(BaseModel):
             val_raw = file.readlines()
 
         (training_corpus, training_tags,) = process_data(
-            training_raw, args.min_sequence_length, args.max_sequence_length
+            training_raw, args.min_sequence_length, args.max_sequence_length, is_split_into_words=args.is_split_into_words
         )
 
         (
             validation_corpus,
             validation_tags,
-        ) = process_data(val_raw, args.min_sequence_length, args.max_sequence_length)
+        ) = process_data(val_raw, args.min_sequence_length, args.max_sequence_length, is_split_into_words=args.is_split_into_words)
 
         try:
             label2id = json.loads(args.label2id)
@@ -325,6 +332,7 @@ class NERTrainingArguments(BaseModel):
             use_class_weight=args.use_class_weight,
             log_class_weight=args.log_class_weight,
             additional_tokenizer_config=additional_tokenizer_config,
+            is_split_into_words=args.is_split_into_words
         )
 
         return training_pipeline_args
@@ -422,13 +430,13 @@ class NERTrainingPipeline:
 
         self.train_encodings = self.tokenizer(
             self.arguments.training_corpus,
-            is_split_into_words=True,
+            is_split_into_words=self.arguments.is_split_into_words,
             return_offsets_mapping=True,
             padding=True,
         )
         self.val_encodings = self.tokenizer(
             self.arguments.validation_corpus,
-            is_split_into_words=True,
+            is_split_into_words=self.arguments.is_split_into_words,
             return_offsets_mapping=True,
             padding=True,
         )
@@ -655,24 +663,48 @@ class NERTrainingPipeline:
         logger.info("encoding tags")
         encoded_labels = []
         with tqdm(total=len(tags)) as pbar:
-            for doc_labels, doc_offset, sample in zip(
-                tags, encodings.offset_mapping, corpus
+            for  doc_labels, doc_offset, sample, input_ids in zip(
+                tags, encodings.offset_mapping, corpus, encodings.input_ids
             ):
-                try:
-                    # create an empty array of -100
-                    doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
-                    arr_offset = np.array(doc_offset)
+                if self.arguments.is_split_into_words:
+                    try:
+                        # create an empty array of -100
+                        doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
+                        arr_offset = np.array(doc_offset)
 
-                    # set labels whose first offset position is 0 and the second is not 0
-                    doc_enc_labels[
-                        (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
-                    ] = doc_labels
-                    encoded_labels.append(doc_enc_labels.tolist())
-                except ValueError as e:
-                    logger.warning("error encoding: %s", str(e))
-                    logger.warning("tags: %s", doc_labels)
-                    logger.warning("sample: %s", sample)
-                    raise e
+                        # set labels whose first offset position is 0 and the second is not 0
+                        doc_enc_labels[
+                            (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
+                        ] = doc_labels
+                        encoded_labels.append(doc_enc_labels.tolist())
+                    except ValueError as e:
+                        logger.warning("error encoding: %s", str(e))
+                        logger.warning("tags: %s", doc_labels)
+                        logger.warning("sample: %s", sample)
+                        logger.warning("doc offset: %s", doc_offset)
+                        raise e
+                else:
+                    sub_token_labels = []
+
+                    # Track the current word index
+                    current_word_idx = 0
+
+                    # Process each token and assign labels
+                    for token_idx, (_, _) in enumerate(zip(input_ids, doc_offset)):
+                        # Check if the token is the last sub-token of a word
+                        is_last_sub_token = (
+                            token_idx + 1 == len(input_ids) or  # End of the sequence
+                            self.tokenizer.convert_ids_to_tokens(input_ids[token_idx + 1]).startswith('Ġ')  # Next token is a new word
+                        )
+
+                        if is_last_sub_token:
+                            # Assign the label of the current word
+                            sub_token_labels.append(doc_labels[current_word_idx])
+                            current_word_idx += 1  # Move to the next word
+                        else:
+                            # Assign -100 to other sub-tokens
+                            sub_token_labels.append(-100)
+                    encoded_labels.append(sub_token_labels)
                 pbar.update(1)
 
         return encoded_labels
