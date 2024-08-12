@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -80,8 +80,8 @@ class Step2NERTrainingArguments(BaseModel):
     """
 
     # basic args
-    training_corpus: List[List[str]]
-    validation_corpus: List[List[str]]
+    training_corpus: Union[List[List[str]], List[str]]
+    validation_corpus: Union[List[List[str]], List[str]]
     training_tags: List[List[int]]
     validation_tags: List[List[int]]
     training_step1_features: List[List[int]]
@@ -427,6 +427,7 @@ class Step2NERTrainingArguments(BaseModel):
             use_class_weight=args.use_class_weight,
             log_class_weight=args.log_class_weight,
             additional_tokenizer_config=additional_tokenizer_config,
+            is_split_into_words=args.is_split_into_words
         )
 
         return training_pipeline_args
@@ -525,6 +526,8 @@ class Step2NERTrainingPipeline:
         It also handles splitting the text into words where necessary and ensures that the resulting tokens are padded appropriately.
         """  # noqa E501
         logger.info("tokenize data")
+        
+        logger.info("splited into words: %s", self.arguments.is_split_into_words)
 
         self.train_encodings = self.tokenizer(
             self.arguments.training_corpus,
@@ -777,24 +780,48 @@ class Step2NERTrainingPipeline:
         logger.info("encoding tags")
         encoded_labels = []
         with tqdm(total=len(tags)) as pbar:
-            for doc_labels, doc_offset, sample in zip(
-                tags, encodings.offset_mapping, corpus
+            for  doc_labels, doc_offset, sample, input_ids in zip(
+                tags, encodings.offset_mapping, corpus, encodings.input_ids
             ):
-                try:
-                    # create an empty array of -100
-                    doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
-                    arr_offset = np.array(doc_offset)
+                if self.arguments.is_split_into_words:
+                    try:
+                        # create an empty array of -100
+                        doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
+                        arr_offset = np.array(doc_offset)
 
-                    # set labels whose first offset position is 0 and the second is not 0
-                    doc_enc_labels[
-                        (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
-                    ] = doc_labels
-                    encoded_labels.append(doc_enc_labels.tolist())
-                except ValueError as e:
-                    logger.warning("error encoding: %s", str(e))
-                    logger.warning("tags: %s", doc_labels)
-                    logger.warning("sample: %s", sample)
-                    raise e
+                        # set labels whose first offset position is 0 and the second is not 0
+                        doc_enc_labels[
+                            (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
+                        ] = doc_labels
+                        encoded_labels.append(doc_enc_labels.tolist())
+                    except ValueError as e:
+                        logger.warning("error encoding: %s", str(e))
+                        logger.warning("tags: %s", doc_labels)
+                        logger.warning("sample: %s", sample)
+                        logger.warning("doc offset: %s", doc_offset)
+                        raise e
+                else:
+                    sub_token_labels = []
+
+                    # Track the current word index
+                    current_word_idx = 0
+
+                    # Process each token and assign labels
+                    for token_idx, (token, offset) in enumerate(zip(input_ids, doc_offset)):
+                        # Check if the token is the last sub-token of a word
+                        is_last_sub_token = (
+                            token_idx + 1 == len(input_ids) or  # End of the sequence
+                            self.tokenizer.convert_ids_to_tokens(input_ids[token_idx + 1]).startswith('Ġ')  # Next token is a new word
+                        )
+
+                        if is_last_sub_token:
+                            # Assign the label of the current word
+                            sub_token_labels.append(doc_labels[current_word_idx])
+                            current_word_idx += 1  # Move to the next word
+                        else:
+                            # Assign -100 to other sub-tokens
+                            sub_token_labels.append(-100)
+                    encoded_labels.append(sub_token_labels)
                 pbar.update(1)
 
         return encoded_labels
@@ -803,24 +830,47 @@ class Step2NERTrainingPipeline:
         logger.info("encoding tags")
         encoded_labels = []
         with tqdm(total=len(all_step1_features)) as pbar:
-            for step1_features, doc_offset, sample in zip(
-                all_step1_features, encodings.offset_mapping, corpus
+            for step1_features, doc_offset, sample, input_ids in zip(
+                all_step1_features, encodings.offset_mapping, corpus, encodings.input_ids
             ):
-                try:
-                    # create an empty array of -100
-                    doc_enc_labels = np.ones(len(doc_offset), dtype=int) * 0
-                    arr_offset = np.array(doc_offset)
+                if self.arguments.is_split_into_words:
+                    try:
+                        # create an empty array of -100
+                        doc_enc_labels = np.ones(len(doc_offset), dtype=int) * 0
+                        arr_offset = np.array(doc_offset)
 
-                    # set labels whose first offset position is 0 and the second is not 0
-                    doc_enc_labels[
-                        (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
-                    ] = step1_features
-                    encoded_labels.append(doc_enc_labels.tolist())
-                except ValueError as e:
-                    logger.warning("error encoding: %s", str(e))
-                    logger.warning("tags: %s", step1_features)
-                    logger.warning("sample: %s", sample)
-                    raise e
+                        # set labels whose first offset position is 0 and the second is not 0
+                        doc_enc_labels[
+                            (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
+                        ] = step1_features
+                        encoded_labels.append(doc_enc_labels.tolist())
+                    except ValueError as e:
+                        logger.warning("error encoding: %s", str(e))
+                        logger.warning("tags: %s", step1_features)
+                        logger.warning("sample: %s", sample)
+                        raise e
+                else:
+                    sub_token_labels = []
+
+                    # Track the current word index
+                    current_word_idx = 0
+
+                    # Process each token and assign labels
+                    for token_idx, (token, offset) in enumerate(zip(input_ids, doc_offset)):
+                        # Check if the token is the last sub-token of a word
+                        is_last_sub_token = (
+                            token_idx + 1 == len(input_ids) or  # End of the sequence
+                            self.tokenizer.convert_ids_to_tokens(input_ids[token_idx + 1]).startswith('Ġ')  # Next token is a new word
+                        )
+
+                        if is_last_sub_token:
+                            # Assign the label of the current word
+                            sub_token_labels.append(step1_features[current_word_idx])
+                            current_word_idx += 1  # Move to the next word
+                        else:
+                            # Assign -100 to other sub-tokens
+                            sub_token_labels.append(-100)
+                    encoded_labels.append(sub_token_labels)
                 pbar.update(1)
 
         return encoded_labels

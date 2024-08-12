@@ -48,6 +48,7 @@ class EvaluationArguments(BaseModel):
     additional_tokenizer_config: Optional[Dict] = {}
     additional_model_config: Optional[Dict] = {}
     only_compute_positional_recal: bool = False
+    additional_classifier_kwargs: Optional[Dict] = {}
 
     @staticmethod
     def add_cli_args(
@@ -144,6 +145,12 @@ class EvaluationArguments(BaseModel):
             default=True,
             help="Whether the input is split into words",
         )
+        parser.add_argument(
+            "--additional_classifier_kwargs",
+            type=str,
+            default="{}",
+            help="JSON string of additional classifier kwargs",
+        )
         return parser
 
     @staticmethod
@@ -200,6 +207,12 @@ class EvaluationArguments(BaseModel):
             additional_tokenizer_config = json.loads(args.additional_tokenizer_config)
         except (json.JSONDecodeError, TypeError):
             additional_tokenizer_config = {}
+        
+        try:
+            additional_classifier_kwargs = json.loads(args.additional_classifier_kwargs)
+        except (json.JSONDecodeError, TypeError):
+            additional_classifier_kwargs = {}
+            
         # Set the attributes from the parsed arguments.
         evaluation_pipeline_args = cls(
             evaluation_corpus=evaluation_corpus,
@@ -214,6 +227,7 @@ class EvaluationArguments(BaseModel):
             label2id=label2id,
             additional_tokenizer_config=additional_tokenizer_config,
             only_compute_positional_recal=args.only_compute_positional_recal,
+            additional_classifier_kwargs=additional_classifier_kwargs,
         )
 
         return evaluation_pipeline_args
@@ -234,7 +248,8 @@ class EvaluationPipeline:
             **evaluation_arguments.additional_tokenizer_config,
         )
         self.classifier = model_collection.model.from_pretrained(
-            evaluation_arguments.model_weight_name
+            evaluation_arguments.model_weight_name,
+            **evaluation_arguments.additional_classifier_kwargs
         ).to(self.device)
         if evaluation_arguments.label2id:
             self.label2id = evaluation_arguments.label2id
