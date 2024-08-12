@@ -415,6 +415,7 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             self.classifier = KAN(
                 [
                     config.hidden_size,
+                    config.hidden_size//2,
                     config.num_labels,
                 ]
             )
