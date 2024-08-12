@@ -85,6 +85,85 @@ class BertFocalLossForTokenClassification(BertForTokenClassification):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+    
+
+class RobertaFocalLossForTokenClassification(RobertaForTokenClassification):
+    def __init__(self, config, backbone_model: RobertaModel = None):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+
+        if backbone_model is not None:
+            self.roberta = backbone_model
+        else:
+            self.roberta = RobertaModel(config, add_pooling_layer=False)
+        classifier_dropout = (
+            config.classifier_dropout
+            if config.classifier_dropout is not None
+            else config.hidden_dropout_prob
+        )
+        self.dropout = nn.Dropout(classifier_dropout)
+        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+        self.post_init()
+        self._loss_fct = None
+
+    def set_loss_fct(self, focal_loss):
+        self._loss_fct = focal_loss.to(self.device)
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        token_type_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        class_weights: Optional[torch.Tensor] = None,
+    ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
+        r"""
+        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+            Labels for computing the token classification loss. Indices should be in `[0, ..., config.num_labels - 1]`.
+        """
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
+
+        outputs = self.roberta(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        sequence_output = outputs[0]
+
+        sequence_output = self.dropout(sequence_output)
+        logits = self.classifier(sequence_output)
+
+        loss = None
+        if labels is not None:
+            loss = self._loss_fct(
+                logits.view(-1, self.num_labels), labels.view(-1), class_weights
+            )
+
+        if not return_dict:
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return TokenClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
 
 
 class BertEmbeddingsStep2(BertEmbeddings):
@@ -479,27 +558,6 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             if selected_hiddenstates.size(0) > 0: 
                 logits = self.classifier(selected_hiddenstates.cuda())
                 restored_logits[batch_index][mask] = logits
-
-        #     if labels is not None:
-        #         target_labels = labels[batch_index][mask]
-        #         try:
-        #             total_loss += self._loss_fct(
-        #                 logits.view(-1, self.num_labels),
-        #                 target_labels.view(-1),
-        #                 class_weights.to(target_labels.device),
-        #             )
-        #         except Exception as e:
-        #             logger.warning(f"error for batch index: {batch_index}, {str(e)}")
-        #             logger.warning(f"logits device: {logits.view(-1, self.num_labels).device}, labels device: {target_labels.device}")
-        #             total_loss = None
-        #             break
-
-        #     num_sequences += 1
-
-        # if total_loss is not None and num_sequences > 0:
-        #     mean_loss = total_loss / num_sequences
-        # else:
-        #     mean_loss = total_loss
         
         if labels is not None:
             mean_loss = self._loss_fct(
