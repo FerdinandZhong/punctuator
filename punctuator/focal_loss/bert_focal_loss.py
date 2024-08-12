@@ -454,7 +454,7 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         sequence_output = outputs[0]
 
         if labels is not None:
-            labels[token_type_ids==1] = -100
+            labels[token_type_ids==0] = -100
         else:
             mean_loss = None
         
@@ -462,8 +462,8 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         restored_logits = torch.full(
             (token_type_ids.size(0), token_type_ids.size(1), self.num_labels),
             float(-1),
-            device=labels.device
-        ).to(labels.device)
+            device=token_type_ids.device
+        ).to(token_type_ids.device)
 
         # Set the first class to have the maximum probability by default (logit value of 0)
         restored_logits[:, :, 0] = 0
@@ -475,8 +475,9 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             
             mask = token_type_ids[batch_index] > 0
             selected_hiddenstates = sequence_output[batch_index][mask]
-            logits = self.classifier(selected_hiddenstates.cuda())
-            restored_logits[batch_index][mask] = logits
+            if selected_hiddenstates.size(0) > 0: 
+                logits = self.classifier(selected_hiddenstates.cuda())
+                restored_logits[batch_index][mask] = logits
 
         #     if labels is not None:
         #         target_labels = labels[batch_index][mask]
