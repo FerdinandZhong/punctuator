@@ -412,15 +412,22 @@ class EvaluationPipeline:
             for step1_features, doc_offset, sample in zip(
                 all_step1_features, encodings.offset_mapping, corpus
             ):
+                new_labels = []
                 try:
+                    for label, word in zip(step1_features, sample):
+                        tokens = self.tokenizer.tokenize(word)
+                        if len(tokens) > 1:
+                            new_labels.extend([label] + [-100]*(len(tokens)-1))
+                        else:
+                            new_labels.append(label)
                     # create an empty array of -100
                     doc_enc_labels = np.ones(len(doc_offset), dtype=int) * 0
                     arr_offset = np.array(doc_offset)
 
                     # set labels whose first offset position is 0 and the second is not 0
                     doc_enc_labels[
-                        (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
-                    ] = step1_features
+                         ~np.all(arr_offset == 0, axis=1)
+                    ] = new_labels
                     encoded_labels.append(doc_enc_labels.tolist())
                 except ValueError as e:
                     logger.warning("error encoding: %s", str(e))

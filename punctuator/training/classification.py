@@ -64,6 +64,7 @@ class ClassificationArguments(BaseModel):
     additional_model_config: Optional[Dict] = {}
     only_compute_positional_recal: bool = False
     output_file_path: str
+    label_at_start: bool = True
 
     @staticmethod
     def add_cli_args(
@@ -145,6 +146,12 @@ class ClassificationArguments(BaseModel):
             default=False,
             help="whether only compute the positional recall",
         )
+        parser.add_argument(
+            "--label_at_start",
+            type=str2bool,
+            default=True,
+            help="Whether have the label at the start of the word",
+        )
         parser.add_argument("--output_file_path", type=str, help="Output")
         return parser
 
@@ -195,6 +202,7 @@ class ClassificationArguments(BaseModel):
             id2label=id2label,
             additional_tokenizer_config=additional_tokenizer_config,
             output_file_path=args.output_file_path,
+            label_at_start=args.label_at_start
         )
 
         return pipeline_args
@@ -281,9 +289,9 @@ class ClassificationPipeline:
                 logits = outputs.logits
 
                 offset_marks = self._mark_ignored_tokens(
-                    tokenized_inputs["offset_mapping"]
+                    tokenized_inputs["offset_mapping"], self.arguments.corpus
                 )
-                true_preds = self._post_process(logits, attention_mask, offset_marks)
+                true_preds = self._post_process(logits, offset_marks)
                 for label_id, token in zip(true_preds, tokens):
                     label = self.id2label[label_id]
                     file_writer.write("%s\t%s\n" % (token, label))
@@ -292,15 +300,25 @@ class ClassificationPipeline:
 
         file_writer.close()
 
-    def _mark_ignored_tokens(self, offset_mapping):
+    def _mark_ignored_tokens(self, offset_mapping, corpus):
         samples = []
-        for sample_offset in offset_mapping:
+        for sample_offset, sample in zip(offset_mapping, corpus):
+            new_labels = []
+            for word in sample:
+                tokens = self.tokenizer.tokenize(word)
+                if len(tokens) > 1:
+                    if self.arguments.label_at_start:
+                        new_labels.extend([0] + [-100]*(len(tokens)-1))
+                    else:
+                        new_labels.extend([-100]*(len(tokens)-1) + [0])
+                else:
+                    new_labels.append(0)
             # create an empty array of -100
             sample_marks = np.ones(len(sample_offset), dtype=int) * -100
             arr_offset = np.array(sample_offset)
 
             # set labels whose first offset position is 0 and the second is not 0, only special tokens second is also 0
-            sample_marks[(arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)] = 0
+            sample_marks[~np.all(arr_offset == 0, axis=1)] = new_labels
             samples.append(sample_marks.tolist())
 
         return np.array(samples).flatten()
@@ -308,7 +326,7 @@ class ClassificationPipeline:
     def run(self):
         self.generate_dataset().inference()
 
-    def _post_process(self, logits, attention_mask, offset_marks):
+    def _post_process(self, logits, offset_marks):
         if self.device.type == "cuda":
             max_preds = logits.argmax(dim=2).detach().cpu().numpy().flatten()
             # flattened_attention = attention_mask.detach().cpu().numpy().flatten()
