@@ -266,7 +266,7 @@ class EvaluationPipeline:
             padding=True,
         )
         self.evaluation_encoded_tags = self._encode_tags(
-            self.arguments.evaluation_tags, self.encodings, self.arguments.evaluation_corpus
+            self.arguments.evaluation_tags, self.encodings
         )
 
         self.evaluation_encoded_step1_features = self._encode_step1_features(
@@ -409,17 +409,10 @@ class EvaluationPipeline:
         logger.info("encoding features")
         encoded_labels = []
         with tqdm(total=len(all_step1_features)) as pbar:
-            for step1_features, doc_offset, doc in zip(
+            for step1_features, doc_offset, sample in zip(
                 all_step1_features, encodings.offset_mapping, corpus
             ):
-                new_step1_features = []
                 try:
-                    for label, word in zip(step1_features, doc):
-                        tokens = self.tokenizer.tokenize(word)
-                        if len(tokens) > 1:
-                            new_step1_features.extend([label] + [-100]*(len(tokens)-1))
-                        else:
-                            new_step1_features.append(label)
                     # create an empty array of -100
                     doc_enc_labels = np.ones(len(doc_offset), dtype=int) * 0
                     arr_offset = np.array(doc_offset)
@@ -427,12 +420,12 @@ class EvaluationPipeline:
                     # set labels whose first offset position is 0 and the second is not 0
                     doc_enc_labels[
                         (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
-                    ] = new_step1_features
+                    ] = step1_features
                     encoded_labels.append(doc_enc_labels.tolist())
                 except ValueError as e:
                     logger.warning("error encoding: %s", str(e))
                     logger.warning("tags: %s", step1_features)
-                    logger.warning("sample: %s", doc)
+                    logger.warning("sample: %s", sample)
                     raise e
                 pbar.update(1)
 
