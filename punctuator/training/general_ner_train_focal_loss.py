@@ -262,13 +262,18 @@ class NERTrainingArguments(BaseModel):
             val_raw = file.readlines()
 
         (training_corpus, training_tags,) = process_data(
-            training_raw, args.min_sequence_length, args.max_sequence_length, is_split_into_words=args.is_split_into_words
+            training_raw,
+            args.min_sequence_length,
+            args.max_sequence_length,
+            is_split_into_words=args.is_split_into_words,
         )
 
-        (
-            validation_corpus,
-            validation_tags,
-        ) = process_data(val_raw, args.min_sequence_length, args.max_sequence_length, is_split_into_words=args.is_split_into_words)
+        (validation_corpus, validation_tags,) = process_data(
+            val_raw,
+            args.min_sequence_length,
+            args.max_sequence_length,
+            is_split_into_words=args.is_split_into_words,
+        )
 
         try:
             label2id = json.loads(args.label2id)
@@ -309,7 +314,7 @@ class NERTrainingArguments(BaseModel):
         # Set the attributes from the parsed arguments.
         sample = training_corpus[0]
         logger.info("Corpus Sample: %s", sample)
-        
+
         training_pipeline_args = cls(
             training_corpus=training_corpus,
             validation_corpus=validation_corpus,
@@ -335,7 +340,7 @@ class NERTrainingArguments(BaseModel):
             use_class_weight=args.use_class_weight,
             log_class_weight=args.log_class_weight,
             additional_tokenizer_config=additional_tokenizer_config,
-            is_split_into_words=args.is_split_into_words
+            is_split_into_words=args.is_split_into_words,
         )
 
         return training_pipeline_args
@@ -666,7 +671,7 @@ class NERTrainingPipeline:
         logger.info("encoding tags")
         encoded_labels = []
         with tqdm(total=len(tags)) as pbar:
-            for  doc_labels, doc_offset, sample, input_ids in zip(
+            for doc_labels, doc_offset, sample, input_ids in zip(
                 tags, encodings.offset_mapping, corpus, encodings.input_ids
             ):
                 if self.arguments.is_split_into_words:

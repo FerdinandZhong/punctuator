@@ -207,12 +207,12 @@ class EvaluationArguments(BaseModel):
             additional_tokenizer_config = json.loads(args.additional_tokenizer_config)
         except (json.JSONDecodeError, TypeError):
             additional_tokenizer_config = {}
-        
+
         try:
             additional_classifier_kwargs = json.loads(args.additional_classifier_kwargs)
         except (json.JSONDecodeError, TypeError):
             additional_classifier_kwargs = {}
-            
+
         # Set the attributes from the parsed arguments.
         evaluation_pipeline_args = cls(
             evaluation_corpus=evaluation_corpus,
@@ -249,7 +249,7 @@ class EvaluationPipeline:
         )
         self.classifier = model_collection.model.from_pretrained(
             evaluation_arguments.model_weight_name,
-            **evaluation_arguments.additional_classifier_kwargs
+            **evaluation_arguments.additional_classifier_kwargs,
         ).to(self.device)
         if evaluation_arguments.label2id:
             self.label2id = evaluation_arguments.label2id
@@ -370,23 +370,57 @@ class EvaluationPipeline:
     def run(self):
         self.tokenize().validate()
 
-    def _encode_tags(self, tags, encodings):
+    def _encode_tags(self, tags, encodings, corpus):
         logger.info("encoding tags")
         encoded_labels = []
         with tqdm(total=len(tags)) as pbar:
-            for doc_labels, doc_offset in zip(tags, encodings.offset_mapping):
-                try:
-                    # create an empty array of -100
-                    doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
-                    arr_offset = np.array(doc_offset)
+            for doc_labels, doc_offset, sample, input_ids in zip(
+                tags, encodings.offset_mapping, corpus, encodings.input_ids
+            ):
+                if self.arguments.is_split_into_words:
+                    try:
+                        # create an empty array of -100
+                        doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
+                        arr_offset = np.array(doc_offset)
 
-                    # set labels whose first offset position is 0 and the second is not 0
-                    doc_enc_labels[
-                        (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
-                    ] = doc_labels
-                    encoded_labels.append(doc_enc_labels.tolist())
-                except ValueError as e:
-                    logger.warning("error encoding: %s", str(e))
+                        # set labels whose first offset position is 0 and the second is not 0
+                        doc_enc_labels[
+                            (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
+                        ] = doc_labels
+                        encoded_labels.append(doc_enc_labels.tolist())
+                    except ValueError as e:
+                        logger.warning("error encoding: %s", str(e))
+                        logger.warning("tags: %s", doc_labels)
+                        logger.warning("sample: %s", sample)
+                        logger.warning("doc offset: %s", doc_offset)
+                        raise e
+                else:
+                    sub_token_labels = []
+
+                    # Track the current word index
+                    current_word_idx = 0
+
+                    # Process each token and assign labels
+                    for token_idx, (token, offset) in enumerate(
+                        zip(input_ids, doc_offset)
+                    ):
+                        # Check if the token is the last sub-token of a word
+                        is_last_sub_token = token_idx + 1 == len(
+                            input_ids
+                        ) or self.tokenizer.convert_ids_to_tokens(  # End of the sequence
+                            input_ids[token_idx + 1]
+                        ).startswith(
+                            "Ġ"
+                        )  # Next token is a new word
+
+                        if is_last_sub_token:
+                            # Assign the label of the current word
+                            sub_token_labels.append(doc_labels[current_word_idx])
+                            current_word_idx += 1  # Move to the next word
+                        else:
+                            # Assign -100 to other sub-tokens
+                            sub_token_labels.append(-100)
+                    encoded_labels.append(sub_token_labels)
                 pbar.update(1)
 
         return encoded_labels

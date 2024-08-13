@@ -427,7 +427,7 @@ class Step2NERTrainingArguments(BaseModel):
             use_class_weight=args.use_class_weight,
             log_class_weight=args.log_class_weight,
             additional_tokenizer_config=additional_tokenizer_config,
-            is_split_into_words=args.is_split_into_words
+            is_split_into_words=args.is_split_into_words,
         )
 
         return training_pipeline_args
@@ -526,7 +526,7 @@ class Step2NERTrainingPipeline:
         It also handles splitting the text into words where necessary and ensures that the resulting tokens are padded appropriately.
         """  # noqa E501
         logger.info("tokenize data")
-        
+
         logger.info("splited into words: %s", self.arguments.is_split_into_words)
 
         self.train_encodings = self.tokenizer(
@@ -780,7 +780,7 @@ class Step2NERTrainingPipeline:
         logger.info("encoding tags")
         encoded_labels = []
         with tqdm(total=len(tags)) as pbar:
-            for  doc_labels, doc_offset, sample, input_ids in zip(
+            for doc_labels, doc_offset, sample, input_ids in zip(
                 tags, encodings.offset_mapping, corpus, encodings.input_ids
             ):
                 if self.arguments.is_split_into_words:
@@ -807,12 +807,17 @@ class Step2NERTrainingPipeline:
                     current_word_idx = 0
 
                     # Process each token and assign labels
-                    for token_idx, (token, offset) in enumerate(zip(input_ids, doc_offset)):
+                    for token_idx, (token, offset) in enumerate(
+                        zip(input_ids, doc_offset)
+                    ):
                         # Check if the token is the last sub-token of a word
-                        is_last_sub_token = (
-                            token_idx + 1 == len(input_ids) or  # End of the sequence
-                            self.tokenizer.convert_ids_to_tokens(input_ids[token_idx + 1]).startswith('Ġ')  # Next token is a new word
-                        )
+                        is_last_sub_token = token_idx + 1 == len(
+                            input_ids
+                        ) or self.tokenizer.convert_ids_to_tokens(  # End of the sequence
+                            input_ids[token_idx + 1]
+                        ).startswith(
+                            "Ġ"
+                        )  # Next token is a new word
 
                         if is_last_sub_token:
                             # Assign the label of the current word
@@ -831,7 +836,10 @@ class Step2NERTrainingPipeline:
         encoded_labels = []
         with tqdm(total=len(all_step1_features)) as pbar:
             for step1_features, doc_offset, sample, input_ids in zip(
-                all_step1_features, encodings.offset_mapping, corpus, encodings.input_ids
+                all_step1_features,
+                encodings.offset_mapping,
+                corpus,
+                encodings.input_ids,
             ):
                 if self.arguments.is_split_into_words:
                     try:
@@ -856,12 +864,17 @@ class Step2NERTrainingPipeline:
                     current_word_idx = 0
 
                     # Process each token and assign labels
-                    for token_idx, (token, offset) in enumerate(zip(input_ids, doc_offset)):
+                    for token_idx, (token, offset) in enumerate(
+                        zip(input_ids, doc_offset)
+                    ):
                         # Check if the token is the last sub-token of a word
-                        is_last_sub_token = (
-                            token_idx + 1 == len(input_ids) or  # End of the sequence
-                            self.tokenizer.convert_ids_to_tokens(input_ids[token_idx + 1]).startswith('Ġ')  # Next token is a new word
-                        )
+                        is_last_sub_token = token_idx + 1 == len(
+                            input_ids
+                        ) or self.tokenizer.convert_ids_to_tokens(  # End of the sequence
+                            input_ids[token_idx + 1]
+                        ).startswith(
+                            "Ġ"
+                        )  # Next token is a new word
 
                         if is_last_sub_token:
                             # Assign the label of the current word
@@ -975,7 +988,7 @@ class Step2NERTrainingPipeline:
 
                 if self.is_parallel:
                     loss = loss.mean()
-                
+
                 if loss is not None:
                     if not is_val:
                         loss.backward()
@@ -992,13 +1005,12 @@ class Step2NERTrainingPipeline:
                         )
                         total_preds.extend(true_preds)
                         total_labels.extend(true_labels)
-                        
+
                     epoch_loss += loss.item()
                     epoch_acc += self._accuracy(logits, attention_mask, labels)
 
-
                 self.total_steps += 1
-                
+
                 pbar.update(1)
                 pbar.set_postfix(
                     {
