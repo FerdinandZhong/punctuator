@@ -382,7 +382,7 @@ class EvaluationPipeline:
                     for label, word in zip(doc_labels, doc):
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
-                            new_labels.extend([-100]*(len(tokens)-1) + [label])
+                            new_labels.extend([label] + [-100]*(len(tokens)-1))
                         else:
                             new_labels.append(label)
                     
@@ -406,13 +406,20 @@ class EvaluationPipeline:
         return encoded_labels
 
     def _encode_step1_features(self, all_step1_features, encodings, corpus):
-        logger.info("encoding tags")
+        logger.info("encoding features")
         encoded_labels = []
         with tqdm(total=len(all_step1_features)) as pbar:
-            for step1_features, doc_offset, sample in zip(
+            for step1_features, doc_offset, doc in zip(
                 all_step1_features, encodings.offset_mapping, corpus
             ):
+                new_step1_features = []
                 try:
+                    for label, word in zip(step1_features, doc):
+                        tokens = self.tokenizer.tokenize(word)
+                        if len(tokens) > 1:
+                            new_step1_features.extend([label] + [-100]*(len(tokens)-1))
+                        else:
+                            new_step1_features.append(label)
                     # create an empty array of -100
                     doc_enc_labels = np.ones(len(doc_offset), dtype=int) * 0
                     arr_offset = np.array(doc_offset)
@@ -420,12 +427,12 @@ class EvaluationPipeline:
                     # set labels whose first offset position is 0 and the second is not 0
                     doc_enc_labels[
                         (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
-                    ] = step1_features
+                    ] = new_step1_features
                     encoded_labels.append(doc_enc_labels.tolist())
                 except ValueError as e:
                     logger.warning("error encoding: %s", str(e))
                     logger.warning("tags: %s", step1_features)
-                    logger.warning("sample: %s", sample)
+                    logger.warning("sample: %s", doc)
                     raise e
                 pbar.update(1)
 
