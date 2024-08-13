@@ -683,15 +683,15 @@ class NERTrainingPipeline:
                         else:
                             new_labels.append(label)
                     
-                        # create an empty array of -100
-                        doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
-                        arr_offset = np.array(doc_offset)
+                    # create an empty array of -100
+                    doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
+                    arr_offset = np.array(doc_offset)
 
-                        # set labels whose first offset position is 0 and the second is not 0
-                        doc_enc_labels[
-                            ~np.all(arr_offset == 0, axis=1)
-                        ] = new_labels
-                        encoded_labels.append(doc_enc_labels.tolist())
+                    # set labels whose first offset position is 0 and the second is not 0
+                    doc_enc_labels[
+                        ~np.all(arr_offset == 0, axis=1)
+                    ] = new_labels
+                    encoded_labels.append(doc_enc_labels.tolist())
                 except ValueError as e:
                     logger.warning("error encoding: %s", str(e))
                     logger.warning("tags: %s", doc_labels)
