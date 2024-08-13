@@ -225,7 +225,7 @@ class EvaluationPipeline:
             padding=True,
         )
         self.evaluation_encoded_tags = self._encode_tags(
-            self.arguments.evaluation_tags, self.encodings
+            self.arguments.evaluation_tags, self.encodings, self.arguments.evaluation_corpus
         )
         self.dataset = EncodingDataset(self.encodings, self.evaluation_encoded_tags)
 
@@ -388,9 +388,9 @@ class EvaluationPipeline:
             prediction_position_ids = prediction_positions.nonzero(as_tuple=True)[0]
             gt_position_ids = gt_positions.nonzero(as_tuple=True)[0]
 
-            if result_type == "precision":
+            if result_type == "recall":
                 position_ids = gt_position_ids
-            elif result_type == "recall":
+            elif result_type == "precision":
                 position_ids = prediction_position_ids
             predictions_in_positions = predictions[position_ids].numpy()
             predictions_in_positions[predictions_in_positions > 1] = 1
