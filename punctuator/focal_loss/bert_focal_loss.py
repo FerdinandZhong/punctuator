@@ -2,10 +2,10 @@ from typing import Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
+from fastkan import FastKAN as KAN
 from transformers.modeling_outputs import TokenClassifierOutput
 from transformers.models.bert.modeling_bert import *
 from transformers.models.roberta.modeling_roberta import *
-from fastkan import FastKAN as KAN
 
 
 class BertFocalLossForTokenClassification(BertForTokenClassification):
@@ -85,7 +85,7 @@ class BertFocalLossForTokenClassification(BertForTokenClassification):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
-    
+
 
 class RobertaFocalLossForTokenClassification(RobertaForTokenClassification):
     def __init__(self, config, backbone_model: RobertaModel = None):
@@ -472,7 +472,7 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
     ):
         super().__init__(config)
         self.num_labels = config.num_labels
-        
+
         if backbone_model is not None:
             self.bert = backbone_model.bert
         else:
@@ -494,7 +494,7 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             self.classifier = KAN(
                 [
                     config.hidden_size,
-                    config.hidden_size//2,
+                    config.hidden_size // 2,
                     config.num_labels,
                 ]
             )
@@ -530,19 +530,19 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
         )
-        
+
         sequence_output = outputs[0]
 
         if labels is not None:
-            labels[token_type_ids==0] = -100
+            labels[token_type_ids == 0] = -100
         else:
             mean_loss = None
-        
+
         # Create a tensor to store restored logits
         restored_logits = torch.full(
             (token_type_ids.size(0), token_type_ids.size(1), self.num_labels),
             float(-1),
-            device=token_type_ids.device
+            device=token_type_ids.device,
         ).to(token_type_ids.device)
 
         # Set the first class to have the maximum probability by default (logit value of 0)
@@ -552,18 +552,18 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         for batch_index in range(
             token_type_ids.size(0)
         ):  # Loop over the batch dimension
-            
+
             mask = token_type_ids[batch_index] > 0
             selected_hiddenstates = sequence_output[batch_index][mask]
-            if selected_hiddenstates.size(0) > 0: 
+            if selected_hiddenstates.size(0) > 0:
                 logits = self.classifier(selected_hiddenstates.cuda())
                 restored_logits[batch_index][mask] = logits
-        
+
         if labels is not None:
             mean_loss = self._loss_fct(
                 restored_logits.view(-1, self.num_labels),
                 labels.view(-1),
-                class_weights
+                class_weights,
             )
 
         if not return_dict:
