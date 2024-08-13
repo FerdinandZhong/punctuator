@@ -266,7 +266,7 @@ class EvaluationPipeline:
             padding=True,
         )
         self.evaluation_encoded_tags = self._encode_tags(
-            self.arguments.evaluation_tags, self.encodings
+            self.arguments.evaluation_tags, self.encodings, self.arguments.evaluation_corpus
         )
 
         self.evaluation_encoded_step1_features = self._encode_step1_features(
