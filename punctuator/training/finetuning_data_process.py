@@ -22,7 +22,8 @@ def _read_data(
 ) -> Union[List[List], List[str]]:
     def read_line(text_line):
         return text_line.strip().split("\t")
-
+    
+    logger.info("split into words: %s", is_split_into_words)
     token_docs = []
     tag_docs = []
     line_index = 0
@@ -36,13 +37,13 @@ def _read_data(
             pbar = tqdm(data_file.readlines())
     for index, line in enumerate(pbar):
         if line == "\n":
-            if len(token_doc) <= 1:
-                continue
-            token_docs.append(token_doc)
-            tag_docs.append(tag_doc)
-            pbar.update(len(token_doc))
-            token_doc = []
-            tag_doc = []
+            # if len(token_doc) <= 1:
+            #     continue
+            # token_docs.append(token_doc)
+            # tag_docs.append(tag_doc)
+            # pbar.update(len(token_doc))
+            # token_doc = []
+            # tag_doc = []
             continue
         processed_line = read_line(line)
         try:

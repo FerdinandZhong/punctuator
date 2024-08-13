@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import time
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -72,8 +72,8 @@ class NERTrainingArguments(BaseModel):
     """
 
     # basic args
-    training_corpus: List[List[str]]
-    validation_corpus: List[List[str]]
+    training_corpus: Union[List[List[str]], List[str]]
+    validation_corpus: Union[List[List[str]], List[str]]
     training_tags: List[List[int]]
     validation_tags: List[List[int]]
     model_weight_name: str
@@ -307,6 +307,9 @@ class NERTrainingArguments(BaseModel):
         except (json.JSONDecodeError, TypeError):
             additional_tokenizer_config = {}
         # Set the attributes from the parsed arguments.
+        sample = training_corpus[0]
+        logger.info("Corpus Sample: %s", sample)
+        
         training_pipeline_args = cls(
             training_corpus=training_corpus,
             validation_corpus=validation_corpus,
