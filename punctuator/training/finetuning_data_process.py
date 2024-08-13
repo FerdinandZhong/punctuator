@@ -50,7 +50,7 @@ def _read_data(
             assert len(processed_line) == 2, "bad line"
             # regex = re.compile("[^\u4e00-\u9fa5a-zA-Z0-9-+']")
             # token = regex.sub("", processed_line[0])
-            token = processed_line[0].strip()
+            token = processed_line[0].strip().lower()
             if token:
                 token_doc.append(token)
                 tag_doc.append(processed_line[1])
@@ -64,7 +64,7 @@ def _read_data(
                 _verify_senquence(token_doc, target_sequence_length)
                 _verify_senquence(tag_doc, target_sequence_length)
                 if not is_split_into_words:
-                    token_docs.append(chinese_combine(" ".join(token_doc)))
+                    token_docs.append(" " + chinese_combine(" ".join(token_doc)))
                 else:
                     token_docs.append(token_doc)
                 tag_docs.append(tag_doc)
@@ -79,7 +79,7 @@ def _read_data(
     try:
         assert len(token_doc) == len(tag_doc), "Not equal length"
         if not is_split_into_words:
-            token_docs.append(chinese_combine(" ".join(token_doc)))
+            token_docs.append(" " + chinese_combine(" ".join(token_doc)))
         else:
             token_docs.append(token_doc)
         tag_docs.append(tag_doc)

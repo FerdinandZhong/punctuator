@@ -671,52 +671,35 @@ class NERTrainingPipeline:
         logger.info("encoding tags")
         encoded_labels = []
         with tqdm(total=len(tags)) as pbar:
-            for doc_labels, doc_offset, sample, input_ids in zip(
-                tags, encodings.offset_mapping, corpus, encodings.input_ids
+            for doc_labels, doc_offset, doc in zip(
+                tags, encodings.offset_mapping, corpus,
             ):
-                if self.arguments.is_split_into_words:
-                    try:
+                new_labels = []
+                try:
+                    for label, word in zip(doc_labels, doc):
+                        tokens = self.tokenizer.tokenize(word)
+                        if len(tokens) > 1:
+                            new_labels.extend([-100]*(len(tokens)-1) + [label])
+                        else:
+                            new_labels.append(label)
+                    
                         # create an empty array of -100
                         doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
                         arr_offset = np.array(doc_offset)
 
                         # set labels whose first offset position is 0 and the second is not 0
                         doc_enc_labels[
-                            (arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0)
-                        ] = doc_labels
+                            ~np.all(arr_offset == 0, axis=1)
+                        ] = new_labels
                         encoded_labels.append(doc_enc_labels.tolist())
-                    except ValueError as e:
-                        logger.warning("error encoding: %s", str(e))
-                        logger.warning("tags: %s", doc_labels)
-                        logger.warning("sample: %s", sample)
-                        logger.warning("doc offset: %s", doc_offset)
-                        raise e
-                else:
-                    sub_token_labels = []
-
-                    # Track the current word index
-                    current_word_idx = 0
-
-                    # Process each token and assign labels
-                    for token_idx, (_, _) in enumerate(zip(input_ids, doc_offset)):
-                        # Check if the token is the last sub-token of a word
-                        is_last_sub_token = token_idx + 1 == len(
-                            input_ids
-                        ) or self.tokenizer.convert_ids_to_tokens(  # End of the sequence
-                            input_ids[token_idx + 1]
-                        ).startswith(
-                            "Ġ"
-                        )  # Next token is a new word
-
-                        if is_last_sub_token:
-                            # Assign the label of the current word
-                            sub_token_labels.append(doc_labels[current_word_idx])
-                            current_word_idx += 1  # Move to the next word
-                        else:
-                            # Assign -100 to other sub-tokens
-                            sub_token_labels.append(-100)
-                    encoded_labels.append(sub_token_labels)
+                except ValueError as e:
+                    logger.warning("error encoding: %s", str(e))
+                    logger.warning("tags: %s", doc_labels)
+                    logger.warning("sample: %s", doc)
+                    logger.warning("doc offset: %s", doc_offset)
+                    raise e
                 pbar.update(1)
+                
 
         return encoded_labels
 
