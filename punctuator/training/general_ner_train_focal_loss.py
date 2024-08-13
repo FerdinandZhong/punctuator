@@ -684,23 +684,24 @@ class NERTrainingPipeline:
                         logger.warning("error encoding: %s", str(e))
                         logger.warning("tags: %s", doc_labels)
                         logger.warning("sample: %s", sample)
+                        logger.warning("sample length: %s", len(sample))
                         logger.warning("doc offset: %s", doc_offset)
+                        logger.warning((arr_offset[:, 0] == 0) & (arr_offset[:, 1] != 0))
                         raise e
                 else:
+                    pure_token_ids = self.tokenizer.tokenize(sample)
+                    logger.
                     sub_token_labels = []
 
                     # Track the current word index
                     current_word_idx = 0
 
                     # Process each token and assign labels
-                    for token_idx, (_, _) in enumerate(zip(input_ids, doc_offset)):
+                    for token_id in input_ids:
                         # Check if the token is the last sub-token of a word
-                        is_last_sub_token = (
-                            token_idx + 1 == len(input_ids) or  # End of the sequence
-                            self.tokenizer.convert_ids_to_tokens(input_ids[token_idx + 1]).startswith('Ġ')  # Next token is a new word
-                        )
+                        is_first_token = self.tokenizer.convert_ids_to_tokens(token_id).startswith("Ġ")
 
-                        if is_last_sub_token:
+                        if is_first_token:
                             # Assign the label of the current word
                             sub_token_labels.append(doc_labels[current_word_idx])
                             current_word_idx += 1  # Move to the next word
@@ -708,6 +709,8 @@ class NERTrainingPipeline:
                             # Assign -100 to other sub-tokens
                             sub_token_labels.append(-100)
                     encoded_labels.append(sub_token_labels)
+                    logger.debug(encoded_labels)
+                    raise Exception("stop")
                 pbar.update(1)
 
         return encoded_labels

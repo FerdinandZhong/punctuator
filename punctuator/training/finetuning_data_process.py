@@ -50,7 +50,7 @@ def _read_data(
             assert len(processed_line) == 2, "bad line"
             # regex = re.compile("[^\u4e00-\u9fa5a-zA-Z0-9-+']")
             # token = regex.sub("", processed_line[0])
-            token = processed_line[0].strip()
+            token = processed_line[0].strip().lower()
             if token:
                 token_doc.append(token)
                 tag_doc.append(processed_line[1])
