@@ -102,6 +102,7 @@ class NERTrainingArguments(BaseModel):
     additional_model_config: Optional[Dict]
     additional_tokenizer_config: Optional[Dict] = {}
     is_split_into_words: bool = True
+    label_at_start: bool = True
 
     @staticmethod
     def add_cli_args(
@@ -251,6 +252,12 @@ class NERTrainingArguments(BaseModel):
             default=True,
             help="Whether the input is split into words",
         )
+        parser.add_argument(
+            "--label_at_start",
+            type=str2bool,
+            default=True,
+            help="Whether have the label at the start of the word",
+        )
         return parser
 
     @staticmethod
@@ -341,6 +348,7 @@ class NERTrainingArguments(BaseModel):
             log_class_weight=args.log_class_weight,
             additional_tokenizer_config=additional_tokenizer_config,
             is_split_into_words=args.is_split_into_words,
+            label_at_start=args.label_at_start
         )
 
         return training_pipeline_args
@@ -679,7 +687,10 @@ class NERTrainingPipeline:
                     for label, word in zip(doc_labels, doc):
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
-                            new_labels.extend([-100]*(len(tokens)-1) + [label])
+                            if self.arguments.label_at_start:
+                                new_labels.extend([label] + [-100]*(len(tokens)-1))
+                            else:
+                                new_labels.extend([-100]*(len(tokens)-1) + [label])
                         else:
                             new_labels.append(label)
                     

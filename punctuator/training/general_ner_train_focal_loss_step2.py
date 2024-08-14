@@ -113,6 +113,7 @@ class Step2NERTrainingArguments(BaseModel):
     additional_model_config: Optional[Dict]
     additional_tokenizer_config: Optional[Dict] = {}
     additional_classifier_kwargs: Optional[Dict] = {}
+    label_at_start: bool = True
 
     @staticmethod
     def add_cli_args(
@@ -287,6 +288,12 @@ class Step2NERTrainingArguments(BaseModel):
             default="{}",
             help="JSON string of additional classifier kwargs",
         )
+        parser.add_argument(
+            "--label_at_start",
+            type=str2bool,
+            default=True,
+            help="Whether have the label at the start of the word",
+        )
         return parser
 
     @staticmethod
@@ -428,6 +435,7 @@ class Step2NERTrainingArguments(BaseModel):
             log_class_weight=args.log_class_weight,
             additional_tokenizer_config=additional_tokenizer_config,
             is_split_into_words=args.is_split_into_words,
+            label_at_start=args.label_at_start
         )
 
         return training_pipeline_args
@@ -788,7 +796,10 @@ class Step2NERTrainingPipeline:
                     for label, word in zip(doc_labels, doc):
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
-                            new_labels.extend([-100]*(len(tokens)-1) + [label])
+                            if self.arguments.label_at_start:
+                                new_labels.extend([label] + [-100]*(len(tokens)-1))
+                            else:
+                                new_labels.extend([-100]*(len(tokens)-1) + [label])
                         else:
                             new_labels.append(label)
                     
@@ -823,9 +834,13 @@ class Step2NERTrainingPipeline:
                     for label, word in zip(step1_features, sample):
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
-                            new_labels.extend([label] + [-100]*(len(tokens)-1))
+                            if self.arguments.label_at_start:
+                                new_labels.extend([label] + [-100]*(len(tokens)-1))
+                            else:
+                                new_labels.extend([-100]*(len(tokens)-1) + [label])
                         else:
                             new_labels.append(label)
+
                     # create an empty array of -100
                     doc_enc_labels = np.ones(len(doc_offset), dtype=int) * 0
                     arr_offset = np.array(doc_offset)

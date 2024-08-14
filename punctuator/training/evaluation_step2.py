@@ -49,6 +49,7 @@ class EvaluationArguments(BaseModel):
     additional_model_config: Optional[Dict] = {}
     only_compute_positional_recal: bool = False
     additional_classifier_kwargs: Optional[Dict] = {}
+    label_at_start: bool = True
 
     @staticmethod
     def add_cli_args(
@@ -151,6 +152,12 @@ class EvaluationArguments(BaseModel):
             default="{}",
             help="JSON string of additional classifier kwargs",
         )
+        parser.add_argument(
+            "--label_at_start",
+            type=str2bool,
+            default=True,
+            help="Whether have the label at the start of the word",
+        )
         return parser
 
     @staticmethod
@@ -228,6 +235,7 @@ class EvaluationArguments(BaseModel):
             additional_tokenizer_config=additional_tokenizer_config,
             only_compute_positional_recal=args.only_compute_positional_recal,
             additional_classifier_kwargs=additional_classifier_kwargs,
+            label_at_start=args.label_at_start
         )
 
         return evaluation_pipeline_args
@@ -382,7 +390,10 @@ class EvaluationPipeline:
                     for label, word in zip(doc_labels, doc):
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
-                            new_labels.extend([label] + [-100]*(len(tokens)-1))
+                            if self.arguments.label_at_start:
+                                new_labels.extend([label] + [-100]*(len(tokens)-1))
+                            else:
+                                new_labels.extend([-100]*(len(tokens)-1) + [label])
                         else:
                             new_labels.append(label)
                     
@@ -417,7 +428,10 @@ class EvaluationPipeline:
                     for label, word in zip(step1_features, sample):
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
-                            new_labels.extend([label] + [-100]*(len(tokens)-1))
+                            if self.arguments.label_at_start:
+                                new_labels.extend([label] + [-100]*(len(tokens)-1))
+                            else:
+                                new_labels.extend([-100]*(len(tokens)-1) + [label])
                         else:
                             new_labels.append(label)
                     # create an empty array of -100
