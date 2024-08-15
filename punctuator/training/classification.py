@@ -289,7 +289,7 @@ class ClassificationPipeline:
                 logits = outputs.logits
 
                 offset_marks = self._mark_ignored_tokens(
-                    tokenized_inputs["offset_mapping"], self.arguments.corpus
+                    tokenized_inputs["offset_mapping"], batch["inputs"]
                 )
                 true_preds = self._post_process(logits, offset_marks)
                 for label_id, token in zip(true_preds, tokens):
@@ -314,11 +314,21 @@ class ClassificationPipeline:
                 else:
                     new_labels.append(0)
             # create an empty array of -100
+           
             sample_marks = np.ones(len(sample_offset), dtype=int) * -100
             arr_offset = np.array(sample_offset)
 
             # set labels whose first offset position is 0 and the second is not 0, only special tokens second is also 0
-            sample_marks[~np.all(arr_offset == 0, axis=1)] = new_labels
+            try:
+                sample_marks[~np.all(arr_offset == 0, axis=1)] = new_labels
+            except Exception as e:
+                logger.debug(sample)
+                logger.debug(new_labels)
+                # logger.debug(sample_offset)
+                logger.debug(len(new_labels))
+                logger.debug(~np.all(arr_offset == 0, axis=1))
+                raise e
+                
             samples.append(sample_marks.tolist())
 
         return np.array(samples).flatten()
