@@ -135,3 +135,10 @@ class Models(Enum):
         RobertaFocalLossForTokenClassification,
         RobertaModel,
     )
+
+    ROBERTA_STEP2_FOCAL_LOSS = ModelCollection(
+        RobertaConfig,
+        RobertaTokenizerFast,
+        FocalLossForTokenClassificationStep2,
+        RobertaFocalLossForTokenClassification,
+    )

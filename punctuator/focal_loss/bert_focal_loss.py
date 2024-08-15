@@ -473,13 +473,19 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         super().__init__(config)
         self.num_labels = config.num_labels
 
-        if backbone_model is not None:
-            self.bert = backbone_model.bert
-        else:
-            self.bert = BertModel(config, add_pooling_layer=False)
+        if hasattr(backbone_model, "bert"):
+            if backbone_model is not None:
+                self.base_model = backbone_model.bert
+            else:
+                self.base_model = BertModel(config, add_pooling_layer=False)
+        elif hasattr(backbone_model, "roberta"):
+            if backbone_model is not None:
+                self.base_model = backbone_model.roberta
+            else:
+                self.base_model = RobertaModel(config, add_pooling_layer=False)
 
         if freeze_encoder:
-            for param in self.bert.parameters():
+            for param in self.base_model.parameters():
                 param.requires_grad = False
 
         classifier_dropout = (
@@ -519,7 +525,7 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             return_dict if return_dict is not None else self.config.use_return_dict
         )
 
-        outputs = self.bert(
+        outputs = self.base_model(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
