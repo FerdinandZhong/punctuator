@@ -524,6 +524,9 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
         )
+        
+        if hasattr(backbone_model, "roberta"):
+            token_type_ids = None
 
         outputs = self.base_model(
             input_ids,
