@@ -371,12 +371,12 @@ class Step2NERTrainingArguments(BaseModel):
         logger.info("Step 1 result: %s", training_step1_features[0])
 
         return (
-            training_corpus,
-            validation_corpus,
-            training_tags,
-            validation_tags,
-            training_step1_features,
-            validation_step1_features,
+            training_corpus[:100],
+            validation_corpus[:100],
+            training_tags[:100],
+            validation_tags[:100],
+            training_step1_features[:100],
+            validation_step1_features[:100],
             label2id,
         )
 

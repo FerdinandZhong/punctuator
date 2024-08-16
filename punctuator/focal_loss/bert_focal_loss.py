@@ -474,11 +474,13 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         self.num_labels = config.num_labels
 
         if hasattr(backbone_model, "bert"):
+            self.model_type = "bert"
             if backbone_model is not None:
                 self.base_model = backbone_model.bert
             else:
                 self.base_model = BertModel(config, add_pooling_layer=False)
         elif hasattr(backbone_model, "roberta"):
+            self.model_type = "roberta"
             if backbone_model is not None:
                 self.base_model = backbone_model.roberta
             else:
@@ -525,8 +527,13 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             return_dict if return_dict is not None else self.config.use_return_dict
         )
         
-        if hasattr(backbone_model, "roberta"):
-            token_type_ids = None
+        if self.model_type == "roberta":
+            # token_type_ids = None
+            # Create a new Embeddings layer, with 2 possible segments IDs instead of 1
+            self.base_model.embeddings.token_type_embeddings = nn.Embedding(2, self.base_model.config.hidden_size).to(token_type_ids.device)
+
+            # Initialize it
+            self.base_model.embeddings.token_type_embeddings.weight.data.normal_(mean=0.0, std=self.base_model.config.initializer_range)
 
         outputs = self.base_model(
             input_ids,
