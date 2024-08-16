@@ -306,12 +306,13 @@ class BertFocalLossForTokenClassificationStep2(BertForTokenClassification):
         )
 
 
-class RobertaEmbeddingsStep2(RobertaEmbeddings):
-    def __init__(self, config):
+class RobertaEmbeddingsStep2(nn.Module):
+    def __init__(self, config, roberta_embedding):
         super().__init__(config)
         self.punct_positions_embedding = nn.Embedding(
             2, config.hidden_size
         )  # num of features == 2
+        self.roberta_embedding = roberta_embedding
 
     def forward(
         self,
@@ -320,46 +321,17 @@ class RobertaEmbeddingsStep2(RobertaEmbeddings):
         position_ids: Optional[torch.LongTensor] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         past_key_values_length: int = 0,
-        punct_positions: Optional[torch.LongTensor] = None,
     ) -> torch.Tensor:
-        if input_ids is not None:
-            input_shape = input_ids.size()
-        else:
-            input_shape = inputs_embeds.size()[:-1]
+        original_embeddings = self.roberta_embedding(
+            input_ids=input_ids,
+            position_ids=position_ids,
+            token_type_ids=None,
+            inputs_embeds=inputs_embeds,
+            past_key_values_length=past_key_values_length,
+        )
+        punct_positions_embeddings = self.punct_positions_embedding(token_type_ids)
 
-        seq_length = input_shape[1]
-
-        if position_ids is None:
-            position_ids = self.position_ids[
-                :, past_key_values_length : seq_length + past_key_values_length
-            ]
-
-        # Setting the token_type_ids to the registered buffer in constructor where it is all zeros, which usually occurs
-        # when its auto-generated, registered buffer helps users when tracing the model without passing token_type_ids, solves
-        # issue #5664
-        if token_type_ids is None:
-            if hasattr(self, "token_type_ids"):
-                buffered_token_type_ids = self.token_type_ids[:, :seq_length]
-                buffered_token_type_ids_expanded = buffered_token_type_ids.expand(
-                    input_shape[0], seq_length
-                )
-                token_type_ids = buffered_token_type_ids_expanded
-            else:
-                token_type_ids = torch.zeros(
-                    input_shape, dtype=torch.long, device=self.position_ids.device
-                )
-
-        if inputs_embeds is None:
-            inputs_embeds = self.word_embeddings(input_ids)
-        token_type_embeddings = self.token_type_embeddings(token_type_ids)
-        punct_positions_embeddings = self.punct_positions_embedding(punct_positions)
-
-        embeddings = inputs_embeds + token_type_embeddings + punct_positions_embeddings
-        if self.position_embedding_type == "absolute":
-            position_embeddings = self.position_embeddings(position_ids)
-            embeddings += position_embeddings
-        embeddings = self.LayerNorm(embeddings)
-        embeddings = self.dropout(embeddings)
+        embeddings = original_embeddings + punct_positions_embeddings
         return embeddings
 
 
@@ -596,10 +568,7 @@ class RobertaFocalLossForTokenClassificationStep2(
         else:
             self.roberta = RobertaModel(config, add_pooling_layer=False)
 
-        self.roberta.config.type_vocab_size = 2
-        self.roberta.embeddings.token_type_embeddings = nn.Embedding(2, self.roberta.config.hidden_size)
-        # Initialize it
-        self.roberta.embeddings.token_type_embeddings.weight.data.normal_(mean=0.0, std=self.roberta.config.initializer_range)
+        self.roberta.embeddings = RobertaEmbeddingsStep2(config, self.roberta.embeddings)
 
         if freeze_encoder:
             for param in self.base_model.parameters():
