@@ -202,7 +202,7 @@ class ClassificationArguments(BaseModel):
             id2label=id2label,
             additional_tokenizer_config=additional_tokenizer_config,
             output_file_path=args.output_file_path,
-            label_at_start=args.label_at_start
+            label_at_start=args.label_at_start,
         )
 
         return pipeline_args
@@ -308,13 +308,13 @@ class ClassificationPipeline:
                 tokens = self.tokenizer.tokenize(word)
                 if len(tokens) > 1:
                     if self.arguments.label_at_start:
-                        new_labels.extend([0] + [-100]*(len(tokens)-1))
+                        new_labels.extend([0] + [-100] * (len(tokens) - 1))
                     else:
-                        new_labels.extend([-100]*(len(tokens)-1) + [0])
+                        new_labels.extend([-100] * (len(tokens) - 1) + [0])
                 else:
                     new_labels.append(0)
             # create an empty array of -100
-           
+
             sample_marks = np.ones(len(sample_offset), dtype=int) * -100
             arr_offset = np.array(sample_offset)
 
@@ -328,7 +328,7 @@ class ClassificationPipeline:
                 logger.debug(len(new_labels))
                 logger.debug(~np.all(arr_offset == 0, axis=1))
                 raise e
-                
+
             samples.append(sample_marks.tolist())
 
         return np.array(samples).flatten()

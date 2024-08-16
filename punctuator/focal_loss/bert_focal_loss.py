@@ -477,7 +477,7 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             self.bert = backbone_model.bert
         else:
             self.bert = BertModel(config, add_pooling_layer=False)
-        
+
         if freeze_encoder:
             for param in self.base_model.parameters():
                 param.requires_grad = False
@@ -518,7 +518,7 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
         )
-        
+
         outputs = self.bert(
             input_ids,
             attention_mask=attention_mask,
@@ -578,7 +578,9 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         )
 
 
-class RobertaFocalLossForTokenClassificationStep2(RobertaFocalLossForTokenClassification):
+class RobertaFocalLossForTokenClassificationStep2(
+    RobertaFocalLossForTokenClassification
+):
     def __init__(
         self,
         config,
@@ -593,8 +595,8 @@ class RobertaFocalLossForTokenClassificationStep2(RobertaFocalLossForTokenClassi
             self.roberta = backbone_model.roberta
         else:
             self.roberta = RobertaModel(config, add_pooling_layer=False)
-        
-        # self.roberta.config.type_vocab_size = 2 
+
+        # self.roberta.config.type_vocab_size = 2
         # self.roberta.embeddings.token_type_embeddings = nn.Embedding(2, self.roberta.config.hidden_size)
         # # Initialize it
         # self.base_model.embeddings.token_type_embeddings.weight.data.normal_(mean=0.0, std=self.roberta.config.initializer_range)
@@ -639,7 +641,7 @@ class RobertaFocalLossForTokenClassificationStep2(RobertaFocalLossForTokenClassi
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
         )
-            
+
         outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,

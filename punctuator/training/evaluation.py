@@ -195,7 +195,7 @@ class EvaluationArguments(BaseModel):
             additional_tokenizer_config=additional_tokenizer_config,
             only_compute_positional_recal=args.only_compute_positional_recal,
             is_split_into_words=args.is_split_into_words,
-            label_at_start=args.label_at_start
+            label_at_start=args.label_at_start,
         )
 
         return evaluation_pipeline_args
@@ -233,7 +233,9 @@ class EvaluationPipeline:
             padding=True,
         )
         self.evaluation_encoded_tags = self._encode_tags(
-            self.arguments.evaluation_tags, self.encodings, self.arguments.evaluation_corpus
+            self.arguments.evaluation_tags,
+            self.encodings,
+            self.arguments.evaluation_corpus,
         )
         self.dataset = EncodingDataset(self.encodings, self.evaluation_encoded_tags)
 
@@ -309,7 +311,7 @@ class EvaluationPipeline:
             total_recall = np.sum(
                 np.array(total_position_preds_recall)
                 == np.array(total_position_labels_recall)
-            ) / len(total_position_preds_recall)
+            ) / len(total_position_labels_recall)
             logger.info("Total recall of puncts position: %.3f", total_recall)
         if len(total_position_labels_precision) == len(total_position_preds_precision):
             total_recall = np.sum(
@@ -326,7 +328,9 @@ class EvaluationPipeline:
         encoded_labels = []
         with tqdm(total=len(tags)) as pbar:
             for doc_labels, doc_offset, doc in zip(
-                tags, encodings.offset_mapping, corpus,
+                tags,
+                encodings.offset_mapping,
+                corpus,
             ):
                 new_labels = []
                 try:
@@ -334,20 +338,18 @@ class EvaluationPipeline:
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
                             if self.arguments.label_at_start:
-                                new_labels.extend([label] + [-100]*(len(tokens)-1))
+                                new_labels.extend([label] + [-100] * (len(tokens) - 1))
                             else:
-                                new_labels.extend([-100]*(len(tokens)-1) + [label])
+                                new_labels.extend([-100] * (len(tokens) - 1) + [label])
                         else:
                             new_labels.append(label)
-                    
+
                     # create an empty array of -100
                     doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
                     arr_offset = np.array(doc_offset)
 
                     # set labels whose first offset position is 0 and the second is not 0
-                    doc_enc_labels[
-                        ~np.all(arr_offset == 0, axis=1)
-                    ] = new_labels
+                    doc_enc_labels[~np.all(arr_offset == 0, axis=1)] = new_labels
                     encoded_labels.append(doc_enc_labels.tolist())
                 except ValueError as e:
                     logger.warning("error encoding: %s", str(e))

@@ -435,7 +435,7 @@ class Step2NERTrainingArguments(BaseModel):
             log_class_weight=args.log_class_weight,
             additional_tokenizer_config=additional_tokenizer_config,
             is_split_into_words=args.is_split_into_words,
-            label_at_start=args.label_at_start
+            label_at_start=args.label_at_start,
         )
 
         return training_pipeline_args
@@ -789,7 +789,9 @@ class Step2NERTrainingPipeline:
         encoded_labels = []
         with tqdm(total=len(tags)) as pbar:
             for doc_labels, doc_offset, doc in zip(
-                tags, encodings.offset_mapping, corpus,
+                tags,
+                encodings.offset_mapping,
+                corpus,
             ):
                 new_labels = []
                 try:
@@ -797,20 +799,18 @@ class Step2NERTrainingPipeline:
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
                             if self.arguments.label_at_start:
-                                new_labels.extend([label] + [-100]*(len(tokens)-1))
+                                new_labels.extend([label] + [-100] * (len(tokens) - 1))
                             else:
-                                new_labels.extend([-100]*(len(tokens)-1) + [label])
+                                new_labels.extend([-100] * (len(tokens) - 1) + [label])
                         else:
                             new_labels.append(label)
-                    
+
                     # create an empty array of -100
                     doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
                     arr_offset = np.array(doc_offset)
 
                     # set labels whose first offset position is 0 and the second is not 0
-                    doc_enc_labels[
-                        ~np.all(arr_offset == 0, axis=1)
-                    ] = new_labels
+                    doc_enc_labels[~np.all(arr_offset == 0, axis=1)] = new_labels
                     encoded_labels.append(doc_enc_labels.tolist())
                 except ValueError as e:
                     logger.warning("error encoding: %s", str(e))
@@ -835,9 +835,9 @@ class Step2NERTrainingPipeline:
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
                             if self.arguments.label_at_start:
-                                new_labels.extend([label] + [-100]*(len(tokens)-1))
+                                new_labels.extend([label] + [-100] * (len(tokens) - 1))
                             else:
-                                new_labels.extend([-100]*(len(tokens)-1) + [label])
+                                new_labels.extend([-100] * (len(tokens) - 1) + [label])
                         else:
                             new_labels.append(label)
 
@@ -846,9 +846,7 @@ class Step2NERTrainingPipeline:
                     arr_offset = np.array(doc_offset)
 
                     # set labels whose first offset position is 0 and the second is not 0
-                    doc_enc_labels[
-                         ~np.all(arr_offset == 0, axis=1)
-                    ] = new_labels
+                    doc_enc_labels[~np.all(arr_offset == 0, axis=1)] = new_labels
                     encoded_labels.append(doc_enc_labels.tolist())
                 except ValueError as e:
                     logger.warning("error encoding: %s", str(e))

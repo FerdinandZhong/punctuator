@@ -103,6 +103,7 @@ class NERTrainingArguments(BaseModel):
     additional_tokenizer_config: Optional[Dict] = {}
     is_split_into_words: bool = True
     label_at_start: bool = True
+    save_by_recall: bool = False
 
     @staticmethod
     def add_cli_args(
@@ -258,6 +259,12 @@ class NERTrainingArguments(BaseModel):
             default=True,
             help="Whether have the label at the start of the word",
         )
+        parser.add_argument(
+            "--save_by_recall",
+            type=str2bool,
+            default=False,
+            help="Whether to save based on recall",
+        )
         return parser
 
     @staticmethod
@@ -348,7 +355,8 @@ class NERTrainingArguments(BaseModel):
             log_class_weight=args.log_class_weight,
             additional_tokenizer_config=additional_tokenizer_config,
             is_split_into_words=args.is_split_into_words,
-            label_at_start=args.label_at_start
+            label_at_start=args.label_at_start,
+            save_by_recall=args.save_by_recall
         )
 
         return training_pipeline_args
@@ -552,6 +560,7 @@ class NERTrainingPipeline:
 
         best_val_loss = 100
         best_val_acc = 0
+        best_val_recall = 0
         no_improvement_count = 0
 
         with tqdm(total=self.arguments.epoch) as pbar:
@@ -562,8 +571,8 @@ class NERTrainingPipeline:
 
                 # self.classifier.train()
 
-                train_loss, train_acc = self._train(train_loader, optim, scheduler)
-                val_loss, val_acc = self._train(val_loader, optim, scheduler, True)
+                train_loss, train_acc, _ = self._train(train_loader, optim, scheduler)
+                val_loss, val_acc, val_recall = self._train(val_loader, optim, scheduler, True)
 
                 self.tensorboard_writter.add_scalar(
                     "Epoch Loss/train", train_loss, epoch + 1
@@ -595,7 +604,7 @@ class NERTrainingPipeline:
                     train_acc * 100,
                 )
                 logger.info(
-                    "\t Val. Loss: %.3f |  Val. Acc: %.2f%%", val_loss, val_acc * 100
+                    "\t Val. Loss: %.3f |  Val. Acc: %.2f%% |  Val. Recall: %.2f%%", val_loss, val_acc * 100, val_recall * 100
                 )
 
                 pbar.update(1)
@@ -614,7 +623,14 @@ class NERTrainingPipeline:
                     else:
                         self.best_state_dict = self.classifier.state_dict()
                     no_improvement_count = 0
-                elif val_acc > best_val_acc:
+                elif self.arguments.save_by_recall and val_recall > best_val_recall:
+                    best_val_recall = val_recall
+                    if self.is_parallel:
+                        self.best_acc_state_dict = self.classifier.module.state_dict()
+                    else:
+                        self.best_acc_state_dict = self.classifier.state_dict()
+                    no_improvement_count = 0
+                elif val_acc > best_val_acc and not self.arguments.save_by_recall:
                     best_val_acc = val_acc
                     if self.is_parallel:
                         self.best_acc_state_dict = self.classifier.module.state_dict()
@@ -680,7 +696,9 @@ class NERTrainingPipeline:
         encoded_labels = []
         with tqdm(total=len(tags)) as pbar:
             for doc_labels, doc_offset, doc in zip(
-                tags, encodings.offset_mapping, corpus,
+                tags,
+                encodings.offset_mapping,
+                corpus,
             ):
                 new_labels = []
                 try:
@@ -688,20 +706,18 @@ class NERTrainingPipeline:
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
                             if self.arguments.label_at_start:
-                                new_labels.extend([label] + [-100]*(len(tokens)-1))
+                                new_labels.extend([label] + [-100] * (len(tokens) - 1))
                             else:
-                                new_labels.extend([-100]*(len(tokens)-1) + [label])
+                                new_labels.extend([-100] * (len(tokens) - 1) + [label])
                         else:
                             new_labels.append(label)
-                    
+
                     # create an empty array of -100
                     doc_enc_labels = np.ones(len(doc_offset), dtype=int) * -100
                     arr_offset = np.array(doc_offset)
 
                     # set labels whose first offset position is 0 and the second is not 0
-                    doc_enc_labels[
-                        ~np.all(arr_offset == 0, axis=1)
-                    ] = new_labels
+                    doc_enc_labels[~np.all(arr_offset == 0, axis=1)] = new_labels
                     encoded_labels.append(doc_enc_labels.tolist())
                 except ValueError as e:
                     logger.warning("error encoding: %s", str(e))
@@ -710,7 +726,6 @@ class NERTrainingPipeline:
                     logger.warning("doc offset: %s", doc_offset)
                     raise e
                 pbar.update(1)
-                
 
         return encoded_labels
 
@@ -831,6 +846,7 @@ class NERTrainingPipeline:
 
                 epoch_loss += loss.item()
                 epoch_acc += self._accuracy(logits, attention_mask, labels)
+                epoch_recall += self._position_results(logits, labels, attention_mask)
 
                 pbar.update(1)
                 pbar.set_postfix(
@@ -857,7 +873,11 @@ class NERTrainingPipeline:
                 )
                 logger.info("validation report: \n %s", report)
 
-        return epoch_loss / in_epoch_steps, epoch_acc / in_epoch_steps
+        return (
+            epoch_loss / in_epoch_steps,
+            epoch_acc / in_epoch_steps,
+            epoch_recall / in_epoch_steps,
+        )
 
     def _epoch_time(self, start_time, end_time):
         elapsed_time = end_time - start_time
@@ -902,6 +922,41 @@ class NERTrainingPipeline:
             return np.sum(true_preds == true_labels) / true_preds.shape[0]
 
         return 0
+
+    def _position_results(self, logits, labels, all_attention_mask):
+        all_preds = logits.argmax(dim=-1).detach()
+        all_labels = labels.detach()
+        all_attention_mask = all_attention_mask.detach()
+        if self.device.type == "cuda":
+            all_preds = all_preds.cpu()
+            all_labels = all_labels.cpu()
+            all_attention_mask = all_attention_mask.cpu()
+
+        position_predictions = []
+        position_gts = []
+
+        for predictions, labels, attention_mask in zip(
+            all_preds, all_labels, all_attention_mask
+        ):
+            gt_positions = (attention_mask == 1) & (labels > 0)
+
+            gt_position_ids = gt_positions.nonzero(as_tuple=True)[0]
+
+            position_ids = gt_position_ids
+
+            predictions_in_positions = predictions[position_ids].numpy()
+            predictions_in_positions[predictions_in_positions > 1] = 1
+            gt_in_positions = labels[position_ids].numpy()
+            gt_in_positions[gt_in_positions > 1] = 1
+            position_predictions.extend(predictions_in_positions)
+            position_gts.extend(gt_in_positions)
+            # position_gts[index, gt_position_ids] = 1
+
+            recall = np.sum(
+                np.array(position_predictions) == np.array(position_gts)
+            ) / len(position_gts)
+
+        return recall
 
     def run(self):
         self.tokenize().generate_dataset().fine_tune().persist()
