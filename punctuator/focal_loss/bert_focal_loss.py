@@ -332,7 +332,8 @@ class RobertaEmbeddingsStep2(nn.Module):
         punct_positions_embeddings = self.punct_positions_embedding(token_type_ids)
 
         embeddings = original_embeddings + punct_positions_embeddings
-        return embeddings
+
+        return self.roberta_embedding.LayerNorm(embeddings)
 
 
 class RobertaModelStep2(RobertaModel):
