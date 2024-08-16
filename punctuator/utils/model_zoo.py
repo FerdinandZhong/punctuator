@@ -27,6 +27,7 @@ from punctuator.focal_loss.bert_focal_loss import (
     BertFocalLossForTokenClassification,
     FocalLossForTokenClassificationStep2,
     RobertaFocalLossForTokenClassification,
+    RobertaFocalLossForTokenClassificationStep2
 )
 from punctuator.pykan.model import (
     BertKanForTokenClassification,
@@ -139,6 +140,6 @@ class Models(Enum):
     ROBERTA_STEP2_FOCAL_LOSS = ModelCollection(
         RobertaConfig,
         RobertaTokenizerFast,
-        FocalLossForTokenClassificationStep2,
+        RobertaFocalLossForTokenClassificationStep2,
         RobertaFocalLossForTokenClassification,
     )

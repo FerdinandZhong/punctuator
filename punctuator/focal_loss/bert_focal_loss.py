@@ -369,81 +369,81 @@ class RobertaModelStep2(RobertaModel):
         self.embeddings = RobertaEmbeddings(config)
 
 
-class RobertaFocalLossForTokenClassificationStep2(RobertaForTokenClassification):
-    def __init__(self, config):
-        super().__init__(config)
-        self.num_labels = config.num_labels
+# class RobertaFocalLossForTokenClassificationStep2(RobertaForTokenClassification):
+#     def __init__(self, config):
+#         super().__init__(config)
+#         self.num_labels = config.num_labels
 
-        self.roberta = RobertaModelStep2(config, add_pooling_layer=False)
+#         self.roberta = RobertaModelStep2(config, add_pooling_layer=False)
 
-        classifier_dropout = (
-            config.classifier_dropout
-            if config.classifier_dropout is not None
-            else config.hidden_dropout_prob
-        )
-        self.dropout = nn.Dropout(classifier_dropout)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
-        self.post_init()
-        self._loss_fct = None
+#         classifier_dropout = (
+#             config.classifier_dropout
+#             if config.classifier_dropout is not None
+#             else config.hidden_dropout_prob
+#         )
+#         self.dropout = nn.Dropout(classifier_dropout)
+#         self.classifier = nn.Linear(config.hidden_size, config.num_labels)
+#         self.post_init()
+#         self._loss_fct = None
 
-    def set_loss_fct(self, focal_loss):
-        self._loss_fct = focal_loss
+#     def set_loss_fct(self, focal_loss):
+#         self._loss_fct = focal_loss
 
-    def forward(
-        self,
-        input_ids: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        token_type_ids: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None,
-        head_mask: Optional[torch.Tensor] = None,
-        inputs_embeds: Optional[torch.Tensor] = None,
-        labels: Optional[torch.Tensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        class_weights: Optional[torch.Tensor] = None,
-    ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
-        r"""
-        labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-            Labels for computing the token classification loss. Indices should be in `[0, ..., config.num_labels - 1]`.
-        """
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+#     def forward(
+#         self,
+#         input_ids: Optional[torch.Tensor] = None,
+#         attention_mask: Optional[torch.Tensor] = None,
+#         token_type_ids: Optional[torch.Tensor] = None,
+#         position_ids: Optional[torch.Tensor] = None,
+#         head_mask: Optional[torch.Tensor] = None,
+#         inputs_embeds: Optional[torch.Tensor] = None,
+#         labels: Optional[torch.Tensor] = None,
+#         output_attentions: Optional[bool] = None,
+#         output_hidden_states: Optional[bool] = None,
+#         return_dict: Optional[bool] = None,
+#         class_weights: Optional[torch.Tensor] = None,
+#     ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
+#         r"""
+#         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
+#             Labels for computing the token classification loss. Indices should be in `[0, ..., config.num_labels - 1]`.
+#         """
+#         return_dict = (
+#             return_dict if return_dict is not None else self.config.use_return_dict
+#         )
 
-        outputs = self.bert(
-            input_ids,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
+#         outputs = self.bert(
+#             input_ids,
+#             attention_mask=attention_mask,
+#             token_type_ids=token_type_ids,
+#             position_ids=position_ids,
+#             head_mask=head_mask,
+#             inputs_embeds=inputs_embeds,
+#             output_attentions=output_attentions,
+#             output_hidden_states=output_hidden_states,
+#             return_dict=return_dict,
+#         )
 
-        sequence_output = outputs[0]
+#         sequence_output = outputs[0]
 
-        sequence_output = self.dropout(sequence_output)
-        logits = self.classifier(sequence_output)
+#         sequence_output = self.dropout(sequence_output)
+#         logits = self.classifier(sequence_output)
 
-        loss = None
-        if labels is not None:
-            loss = self._loss_fct(
-                logits.view(-1, self.num_labels), labels.view(-1), class_weights
-            )
+#         loss = None
+#         if labels is not None:
+#             loss = self._loss_fct(
+#                 logits.view(-1, self.num_labels), labels.view(-1), class_weights
+#             )
 
-        if not return_dict:
-            output = (logits,) + outputs[2:]
-            return ((loss,) + output) if loss is not None else output
+#         if not return_dict:
+#             output = (logits,) + outputs[2:]
+#             return ((loss,) + output) if loss is not None else output
 
-        return TokenClassifierOutput(
-            loss=loss,
-            logits=logits,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-        )
+#         return TokenClassifierOutput(
+#             loss=loss,
+#             logits=logits,
+#             hidden_states=outputs.hidden_states,
+#             attentions=outputs.attentions,
+#         )
 
 
 class MLPStep2Classifier(nn.Module):
@@ -473,19 +473,11 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         super().__init__(config)
         self.num_labels = config.num_labels
 
-        if hasattr(backbone_model, "bert"):
-            self.model_type = "bert"
-            if backbone_model is not None:
-                self.base_model = backbone_model.bert
-            else:
-                self.base_model = BertModel(config, add_pooling_layer=False)
-        elif hasattr(backbone_model, "roberta"):
-            self.model_type = "roberta"
-            if backbone_model is not None:
-                self.base_model = backbone_model.roberta
-            else:
-                self.base_model = RobertaModel(config, add_pooling_layer=False)
-
+        if backbone_model is not None:
+            self.bert = backbone_model.bert
+        else:
+            self.bert = BertModel(config, add_pooling_layer=False)
+        
         if freeze_encoder:
             for param in self.base_model.parameters():
                 param.requires_grad = False
@@ -527,15 +519,128 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
             return_dict if return_dict is not None else self.config.use_return_dict
         )
         
-        if self.model_type == "roberta":
-            # token_type_ids = None
-            # Create a new Embeddings layer, with 2 possible segments IDs instead of 1
-            self.base_model.embeddings.token_type_embeddings = nn.Embedding(2, self.base_model.config.hidden_size).to(token_type_ids.device)
+        outputs = self.bert(
+            input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
 
-            # Initialize it
-            self.base_model.embeddings.token_type_embeddings.weight.data.normal_(mean=0.0, std=self.base_model.config.initializer_range)
+        sequence_output = outputs[0]
 
-        outputs = self.base_model(
+        if labels is not None:
+            labels[token_type_ids == 0] = -100
+        else:
+            mean_loss = None
+
+        # Create a tensor to store restored logits
+        restored_logits = torch.full(
+            (token_type_ids.size(0), token_type_ids.size(1), self.num_labels),
+            float(-1),
+            device=token_type_ids.device,
+        ).to(token_type_ids.device)
+
+        # Set the first class to have the maximum probability by default (logit value of 0)
+        restored_logits[:, :, 0] = 0
+
+        # Loop through the batch
+        for batch_index in range(
+            token_type_ids.size(0)
+        ):  # Loop over the batch dimension
+
+            mask = token_type_ids[batch_index] > 0
+            selected_hiddenstates = sequence_output[batch_index][mask]
+            if selected_hiddenstates.size(0) > 0:
+                logits = self.classifier(selected_hiddenstates.cuda())
+                restored_logits[batch_index][mask] = logits
+
+        if labels is not None:
+            mean_loss = self._loss_fct(
+                restored_logits.view(-1, self.num_labels),
+                labels.view(-1),
+                class_weights,
+            )
+
+        if not return_dict:
+            output = (restored_logits,) + outputs[2:]
+            return ((mean_loss,) + output) if mean_loss is not None else output
+
+        return TokenClassifierOutput(
+            loss=mean_loss,
+            logits=restored_logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+
+
+class RobertaFocalLossForTokenClassificationStep2(RobertaFocalLossForTokenClassification):
+    def __init__(
+        self,
+        config,
+        backbone_model: BertFocalLossForTokenClassification = None,
+        freeze_encoder: bool = False,
+        use_kan: bool = False,
+    ):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+
+        if backbone_model is not None:
+            self.roberta = backbone_model.roberta
+        else:
+            self.roberta = RobertaModel(config, add_pooling_layer=False)
+        
+        self.roberta.config.type_vocab_size = 2 
+        self.roberta.embeddings.token_type_embeddings = nn.Embedding(2, self.roberta.config.hidden_size)
+        # Initialize it
+        self.base_model.embeddings.token_type_embeddings.weight.data.normal_(mean=0.0, std=self.roberta.config.initializer_range)
+
+        if freeze_encoder:
+            for param in self.base_model.parameters():
+                param.requires_grad = False
+
+        classifier_dropout = (
+            config.classifier_dropout
+            if config.classifier_dropout is not None
+            else config.hidden_dropout_prob
+        )
+        self.dropout = nn.Dropout(classifier_dropout)
+        if not use_kan:
+            self.classifier = MLPStep2Classifier(config)
+        else:
+            self.classifier = KAN(
+                [
+                    config.hidden_size,
+                    config.hidden_size // 2,
+                    config.num_labels,
+                ]
+            )
+        self.post_init()
+        self._loss_fct = None
+
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        token_type_ids: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        head_mask: Optional[torch.Tensor] = None,
+        inputs_embeds: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        class_weights: Optional[torch.Tensor] = None,
+    ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
+            
+        outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
             token_type_ids=token_type_ids,
