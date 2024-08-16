@@ -596,10 +596,10 @@ class RobertaFocalLossForTokenClassificationStep2(
         else:
             self.roberta = RobertaModel(config, add_pooling_layer=False)
 
-        # self.roberta.config.type_vocab_size = 2
-        # self.roberta.embeddings.token_type_embeddings = nn.Embedding(2, self.roberta.config.hidden_size)
-        # # Initialize it
-        # self.base_model.embeddings.token_type_embeddings.weight.data.normal_(mean=0.0, std=self.roberta.config.initializer_range)
+        self.roberta.config.type_vocab_size = 2
+        self.roberta.embeddings.token_type_embeddings = nn.Embedding(2, self.roberta.config.hidden_size)
+        # Initialize it
+        self.roberta.embeddings.token_type_embeddings.weight.data.normal_(mean=0.0, std=self.roberta.config.initializer_range)
 
         if freeze_encoder:
             for param in self.base_model.parameters():
@@ -645,7 +645,7 @@ class RobertaFocalLossForTokenClassificationStep2(
         outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
-            token_type_ids=None,
+            token_type_ids=token_type_ids,
             position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
