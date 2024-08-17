@@ -308,7 +308,7 @@ class BertFocalLossForTokenClassificationStep2(BertForTokenClassification):
 
 class RobertaEmbeddingsStep2(nn.Module):
     def __init__(self, config, roberta_embedding):
-        super().__init__(config)
+        super().__init__()
         self.punct_positions_embedding = nn.Embedding(
             2, config.hidden_size
         )  # num of features == 2
@@ -569,8 +569,6 @@ class RobertaFocalLossForTokenClassificationStep2(
         else:
             self.roberta = RobertaModel(config, add_pooling_layer=False)
 
-        self.roberta.embeddings = RobertaEmbeddingsStep2(config, self.roberta.embeddings)
-
         if freeze_encoder:
             for param in self.base_model.parameters():
                 param.requires_grad = False
@@ -615,7 +613,7 @@ class RobertaFocalLossForTokenClassificationStep2(
         outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
+            token_type_ids=None,
             position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
