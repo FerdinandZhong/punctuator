@@ -488,14 +488,14 @@ class NERTrainingPipeline:
                     )
                 ] * torch.cuda.device_count()
             else:
-                weights = (
-                    class_weight.compute_class_weight(
-                        "balanced",
-                        classes=np.array(list(unique_tag_ids)),
-                        y=all_ner_tag_ids,
-                    ).tolist()
-                    * torch.cuda.device_count()
-                )
+                weights = class_weight.compute_class_weight(
+                    "balanced",
+                    classes=np.array(list(unique_tag_ids)),
+                    y=all_ner_tag_ids,
+                ).tolist()
+                if self.arguments.save_by_recall:
+                    weights[0] = DEFAULT_LABEL_WEIGHT
+                weights = weights *  torch.cuda.device_count()
             logger.info(
                 "class weights: %s, id2label: %s",
                 ", ".join([f"{round(weight, 2)}" for weight in weights]),
@@ -754,6 +754,7 @@ class NERTrainingPipeline:
     def _train(self, iterator, optim, scheduler=None, is_val=False):
         epoch_loss = 0
         epoch_acc = 0
+        epoch_recall = 0
         if is_val:
             self.classifier.train(False)
             self.classifier.cuda()
