@@ -356,7 +356,7 @@ class NERTrainingArguments(BaseModel):
             additional_tokenizer_config=additional_tokenizer_config,
             is_split_into_words=args.is_split_into_words,
             label_at_start=args.label_at_start,
-            save_by_recall=args.save_by_recall
+            save_by_recall=args.save_by_recall,
         )
 
         return training_pipeline_args
@@ -495,7 +495,7 @@ class NERTrainingPipeline:
                 ).tolist()
                 if self.arguments.save_by_recall:
                     weights[0] = DEFAULT_LABEL_WEIGHT
-                weights = weights *  torch.cuda.device_count()
+                weights = weights * torch.cuda.device_count()
             logger.info(
                 "class weights: %s, id2label: %s",
                 ", ".join([f"{round(weight, 2)}" for weight in weights]),
@@ -572,7 +572,9 @@ class NERTrainingPipeline:
                 # self.classifier.train()
 
                 train_loss, train_acc, _ = self._train(train_loader, optim, scheduler)
-                val_loss, val_acc, val_recall = self._train(val_loader, optim, scheduler, True)
+                val_loss, val_acc, val_recall = self._train(
+                    val_loader, optim, scheduler, True
+                )
 
                 self.tensorboard_writter.add_scalar(
                     "Epoch Loss/train", train_loss, epoch + 1
@@ -604,7 +606,10 @@ class NERTrainingPipeline:
                     train_acc * 100,
                 )
                 logger.info(
-                    "\t Val. Loss: %.3f |  Val. Acc: %.2f%% |  Val. Recall: %.2f%%", val_loss, val_acc * 100, val_recall * 100
+                    "\t Val. Loss: %.3f |  Val. Acc: %.2f%% |  Val. Recall: %.2f%%",
+                    val_loss,
+                    val_acc * 100,
+                    val_recall * 100,
                 )
 
                 pbar.update(1)

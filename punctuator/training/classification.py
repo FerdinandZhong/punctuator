@@ -6,12 +6,14 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import torch
+from sklearn.metrics import classification_report
+
 from pydantic import BaseModel
 from torch._C import device  # noqa: F401
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from punctuator.utils import Models, model_type, str2bool
+from punctuator.utils import Models, model_type, str2bool, NORMAL_TOKEN_TAG
 
 from .finetuning_data_process import process_data
 
@@ -40,7 +42,7 @@ class ClassificationArguments(BaseModel):
 
     Args:
         corpus(List[List[str]]): list of sequences for evaluation, longest sequence should be no longer than pretrained LM's max_position_embedding(512) # noqa: E501
-        evaluation_tags(List[List[int]]): tags(int) for evaluation (the GT)
+        gt_tags(List[List[int]]): tags(int) for evaluation (the GT)
         model_weight_name(str): name or path of fine-tuned model
         model(Optional(enum)): model selected from Enum Models, default is "DISTILBERT"
         tokenizer_name(str): name of tokenizer
@@ -52,6 +54,7 @@ class ClassificationArguments(BaseModel):
     """
 
     corpus: List[List[str]]
+    gt_tags: List[int]
     model_weight_name: str
     model: Optional[Models] = Models.DISTILBERT
     tokenizer_name: str
@@ -160,8 +163,8 @@ class ClassificationArguments(BaseModel):
         with open(args.evaluation_data_file_path, "r", encoding="utf-8") as file:
             evaluation_raw = file.readlines()
 
-        (corpus, _,) = process_data(
-            evaluation_raw, args.min_sequence_length, args.max_sequence_length
+        (corpus, gt_tags,) = process_data(
+            evaluation_raw, args.min_sequence_length, args.max_sequence_length, is_split_into_words=args.is_split_into_words
         )
 
         try:
@@ -171,13 +174,17 @@ class ClassificationArguments(BaseModel):
             label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
             id2label = {0: "O", 1: "PUNCT"}
 
-        return (corpus, label2id, id2label)
+        gt_tags = [[label2id[tag] for tag in doc] for doc in gt_tags]
+        gt_tags = [tag for sublist in gt_tags for tag in sublist]
+
+        return (corpus, gt_tags, label2id, id2label)
 
     @classmethod
     def from_cli_args(
         cls,
         args: argparse.Namespace,
         corpus: List[List[str]],
+        gt_tags: List[int],
         label2id: Dict,
         id2label: Dict,
     ):
@@ -192,6 +199,7 @@ class ClassificationArguments(BaseModel):
         # Set the attributes from the parsed arguments.
         pipeline_args = cls(
             corpus=corpus,
+            gt_tags=gt_tags,
             model=model_type(args.model),
             model_weight_name=args.model_weight_name,
             tokenizer_name=args.tokenizer_name,
@@ -271,8 +279,9 @@ class ClassificationPipeline:
 
         steps = 0
 
-        file_writer = open(self.arguments.output_file_path, "w")
+        file_writer = open(self.arguments.output_file_path, "w", encoding="utf-8")
 
+        all_preds = []
         with tqdm(total=len(val_loader)) as pbar:
             for batch in val_loader:
                 steps += 1
@@ -292,6 +301,7 @@ class ClassificationPipeline:
                     tokenized_inputs["offset_mapping"], batch["inputs"]
                 )
                 true_preds = self._post_process(logits, offset_marks)
+                all_preds.extend(true_preds)
                 for label_id, token in zip(true_preds, tokens):
                     label = self.id2label[label_id]
                     file_writer.write("%s\t%s\n" % (token, label))
@@ -299,6 +309,22 @@ class ClassificationPipeline:
                 pbar.update(1)
 
         file_writer.close()
+
+        tested_labels = []
+        target_names = []
+        for label, label_id in self.label2id.items():
+            if label != NORMAL_TOKEN_TAG:
+                tested_labels.append(label_id)
+                target_names.append(label)
+        report = classification_report(
+            self.arguments.gt_tags,
+            all_preds,
+            labels=tested_labels,
+            digits=4,
+            target_names=target_names,
+            zero_division=1,
+        )
+        logger.info("output report: \n %s", report)
 
     def _mark_ignored_tokens(self, offset_mapping, corpus):
         samples = []

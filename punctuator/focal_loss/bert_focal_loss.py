@@ -333,7 +333,7 @@ class RobertaEmbeddingsStep2(nn.Module):
 
         embeddings = original_embeddings + punct_positions_embeddings
 
-        return self.roberta_embedding.LayerNorm(embeddings)
+        return embeddings
 
 
 class RobertaModelStep2(RobertaModel):
@@ -560,6 +560,7 @@ class RobertaFocalLossForTokenClassificationStep2(
         backbone_model: BertFocalLossForTokenClassification = None,
         freeze_encoder: bool = False,
         use_kan: bool = False,
+        positonal_importance_alpha: int = 2
     ):
         super().__init__(config)
         self.num_labels = config.num_labels
@@ -568,6 +569,8 @@ class RobertaFocalLossForTokenClassificationStep2(
             self.roberta = backbone_model.roberta
         else:
             self.roberta = RobertaModel(config, add_pooling_layer=False)
+        
+        self.roberta.embeddings = RobertaEmbeddingsStep2(config, self.roberta.embeddings)
 
         if freeze_encoder:
             for param in self.base_model.parameters():
@@ -580,7 +583,8 @@ class RobertaFocalLossForTokenClassificationStep2(
         )
         self.dropout = nn.Dropout(classifier_dropout)
         if not use_kan:
-            self.classifier = MLPStep2Classifier(config)
+            # self.classifier = MLPStep2Classifier(config)
+            self.classifier = nn.Linear(config.hidden_size, config.num_labels)
         else:
             self.classifier = KAN(
                 [
@@ -591,6 +595,7 @@ class RobertaFocalLossForTokenClassificationStep2(
             )
         self.post_init()
         self._loss_fct = None
+        self._positonal_importance_alpha = float(positonal_importance_alpha)
 
     def forward(
         self,
@@ -624,46 +629,79 @@ class RobertaFocalLossForTokenClassificationStep2(
 
         sequence_output = outputs[0]
 
+        positional_importances = torch.full(
+            (labels.size(0), labels.size(1)),
+            float(1),
+            device=labels.device
+        )
+
+        positional_importances[token_type_ids == 1] = self._positonal_importance_alpha
+
+        sequence_output = self.dropout(sequence_output)
+        logits = self.classifier(sequence_output)
+
+        loss = None
         if labels is not None:
-            labels[token_type_ids == 0] = -100
-        else:
-            mean_loss = None
-
-        # Create a tensor to store restored logits
-        restored_logits = torch.full(
-            (token_type_ids.size(0), token_type_ids.size(1), self.num_labels),
-            float(-1),
-            device=token_type_ids.device,
-        ).to(token_type_ids.device)
-
-        # Set the first class to have the maximum probability by default (logit value of 0)
-        restored_logits[:, :, 0] = 0
-
-        # Loop through the batch
-        for batch_index in range(
-            token_type_ids.size(0)
-        ):  # Loop over the batch dimension
-
-            mask = token_type_ids[batch_index] > 0
-            selected_hiddenstates = sequence_output[batch_index][mask]
-            if selected_hiddenstates.size(0) > 0:
-                logits = self.classifier(selected_hiddenstates.cuda())
-                restored_logits[batch_index][mask] = logits
-
-        if labels is not None:
-            mean_loss = self._loss_fct(
-                restored_logits.view(-1, self.num_labels),
-                labels.view(-1),
-                class_weights,
+            loss = self._loss_fct(
+                logits.view(-1, self.num_labels), labels.view(-1), class_weights
             )
+            logger.debug(loss.shape)
+            weighted_loss = loss * positional_importances
+
+            # Compute the final loss by averaging (or summing) over all tokens
+            mean_loss = weighted_loss.mean()
 
         if not return_dict:
-            output = (restored_logits,) + outputs[2:]
-            return ((mean_loss,) + output) if mean_loss is not None else output
+            output = (logits,) + outputs[2:]
+            return ((mean_loss,) + output) if loss is not None else output
 
         return TokenClassifierOutput(
-            loss=mean_loss,
-            logits=restored_logits,
+            loss=loss,
+            logits=logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
         )
+
+        # if labels is not None:
+        #     labels[token_type_ids == 0] = -100
+        # else:
+        #     mean_loss = None
+
+        # # Create a tensor to store restored logits
+        # restored_logits = torch.full(
+        #     (token_type_ids.size(0), token_type_ids.size(1), self.num_labels),
+        #     float(-1),
+        #     device=token_type_ids.device,
+        # ).to(token_type_ids.device)
+
+        # # Set the first class to have the maximum probability by default (logit value of 0)
+        # restored_logits[:, :, 0] = 0
+
+        # # Loop through the batch
+        # for batch_index in range(
+        #     token_type_ids.size(0)
+        # ):  # Loop over the batch dimension
+
+        #     mask = token_type_ids[batch_index] > 0
+        #     selected_hiddenstates = sequence_output[batch_index][mask]
+        #     if selected_hiddenstates.size(0) > 0:
+        #         logits = self.classifier(selected_hiddenstates.cuda())
+        #         restored_logits[batch_index][mask] = logits
+
+        # if labels is not None:
+        #     mean_loss = self._loss_fct(
+        #         restored_logits.view(-1, self.num_labels),
+        #         labels.view(-1),
+        #         class_weights,
+        #     )
+
+        # if not return_dict:
+        #     output = (restored_logits,) + outputs[2:]
+        #     return ((mean_loss,) + output) if mean_loss is not None else output
+
+        # return TokenClassifierOutput(
+        #     loss=mean_loss,
+        #     logits=restored_logits,
+        #     hidden_states=outputs.hidden_states,
+        #     attentions=outputs.attentions,
+        # )
