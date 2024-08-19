@@ -51,6 +51,7 @@ class ClassificationArguments(BaseModel):
         label2id(Optional[Dict]): label2id. Default one is from model config. Pass in this argument if your model doesn't have a label2id inside config # noqa: E501
         gpu_device(Optional[int]): specific gpu card index, default is the CUDA_VISIBLE_DEVICES from environ
         output_file_path(str): output file path
+        
     """
 
     corpus: List[List[str]]
@@ -164,16 +165,19 @@ class ClassificationArguments(BaseModel):
             evaluation_raw = file.readlines()
 
         (corpus, gt_tags,) = process_data(
-            evaluation_raw, args.min_sequence_length, args.max_sequence_length, is_split_into_words=args.is_split_into_words
+            evaluation_raw, args.min_sequence_length, args.max_sequence_length,
         )
 
         try:
             label2id = json.loads(args.label2id)
+        except json.JSONDecodeError:
+            label2id = {"O": 0, "PUNCT": 1}
+            
+        try:
             id2label = json.loads(args.id2label)
         except json.JSONDecodeError:
-            label2id = {"O": 0, "COMMA": 1, "PERIOD": 2, "QUESTION": 3}
             id2label = {0: "O", 1: "PUNCT"}
-
+           
         gt_tags = [[label2id[tag] for tag in doc] for doc in gt_tags]
         gt_tags = [tag for sublist in gt_tags for tag in sublist]
 

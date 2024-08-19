@@ -158,7 +158,7 @@ class FocalLoss(torch.nn.Module):
         self.reduction = reduction
         self.ignore_index = ignore_index
 
-    def forward(self, inputs, targets, alpha=None):
+    def forward(self, inputs, targets, alpha=None, positional_importances=None):
         unignored_mask = targets != self.ignore_index
         targets = targets[unignored_mask]
         if len(targets) == 0:
@@ -170,6 +170,10 @@ class FocalLoss(torch.nn.Module):
         pt = probs.gather(-1, targets.unsqueeze(-1)).squeeze(-1)
         focal_loss = ((1 - pt) ** self.gamma) * ce_loss
 
+        if positional_importances is not None:
+            positional_importances = torch.masked_select(positional_importances, unignored_mask)
+            focal_loss = focal_loss * positional_importances
+            
         if self.reduction == "mean":
             return focal_loss.mean()
         elif self.reduction == "sum":

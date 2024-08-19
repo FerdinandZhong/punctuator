@@ -312,6 +312,7 @@ class RobertaEmbeddingsStep2(nn.Module):
         self.punct_positions_embedding = nn.Embedding(
             2, config.hidden_size
         )  # num of features == 2
+        self.punct_positions_embedding.weight.data.normal_(mean=0.0, std=config.initializer_range)
         self.roberta_embedding = roberta_embedding
 
     def forward(
@@ -491,7 +492,7 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
         )
-
+        
         outputs = self.bert(
             input_ids,
             attention_mask=attention_mask,
@@ -570,7 +571,7 @@ class RobertaFocalLossForTokenClassificationStep2(
         else:
             self.roberta = RobertaModel(config, add_pooling_layer=False)
         
-        self.roberta.embeddings = RobertaEmbeddingsStep2(config, self.roberta.embeddings)
+        # self.roberta.embeddings = RobertaEmbeddingsStep2(config, self.roberta.embeddings)
 
         if freeze_encoder:
             for param in self.base_model.parameters():
@@ -628,11 +629,11 @@ class RobertaFocalLossForTokenClassificationStep2(
         )
 
         sequence_output = outputs[0]
-
+        
         positional_importances = torch.full(
-            (labels.size(0), labels.size(1)),
+            token_type_ids.shape,
             float(1),
-            device=labels.device
+            device=token_type_ids.device
         )
 
         positional_importances[token_type_ids == 1] = self._positonal_importance_alpha
@@ -643,13 +644,8 @@ class RobertaFocalLossForTokenClassificationStep2(
         loss = None
         if labels is not None:
             loss = self._loss_fct(
-                logits.view(-1, self.num_labels), labels.view(-1), class_weights
+                logits.view(-1, self.num_labels), labels.view(-1), alpha=class_weights, positional_importances=positional_importances.view(-1)
             )
-            logger.debug(loss.shape)
-            weighted_loss = loss * positional_importances
-
-            # Compute the final loss by averaging (or summing) over all tokens
-            mean_loss = weighted_loss.mean()
 
         if not return_dict:
             output = (logits,) + outputs[2:]
