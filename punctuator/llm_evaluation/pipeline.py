@@ -1,21 +1,26 @@
 import logging
+import random
 from functools import partial
 
 import numpy as np
+import torch
 from sklearn.metrics import classification_report
+from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
+from transformers import BertModel, BertTokenizer
 
-from punctuator.data_process.data_cleanning import text_lines_cleaning
-from punctuator.utils import ALL_PUNCS, NORMAL_TOKEN_TAG, chinese_split
+from punctuator.utils import NORMAL_TOKEN_TAG, chinese_split, remove_brackets_text
 
 from .constants import (
     CROSS_LANG_PUNCT_MAPPINGS,
     LABEL2ID,
-    LLM_CHAT_MESSAGES,
+    LLM_CHAT_MESSAGES_BERT_OUTPUT,
+    LLM_CHAT_MESSAGES_RAW,
     PUNCT2LABEL,
     PUNCT_SPECIAL_TOKEN,
 )
 from .dataset_utils import (
+    clean_up_data_from_txt,
     generate_dataset,
     normalize_puncs,
     process_line,
@@ -29,23 +34,56 @@ additional_to_remove = ["℃", "|", "♫"]
 logger = logging.getLogger(__name__)
 
 
+class SimilarityEngine:
+    def __init__(self) -> None:
+        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        self.model = BertModel.from_pretrained("bert-base-uncased")
+
+    def get_sentence_embedding(self, tokens):
+        inputs = self.tokenizer(
+            tokens,
+            return_tensors="pt",
+            is_split_into_words=True,
+            padding=True,
+            truncation=True,
+        )
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        # Average the token embeddings to get a sentence embedding
+        return outputs.last_hidden_state.mean(dim=1).squeeze()
+
+    def compute_similarity(self, list1, list2):
+        # Get embeddings for both lists
+        embedding1 = self.get_sentence_embedding(list1)
+        embedding2 = self.get_sentence_embedding(list2)
+
+        # Compute cosine similarity
+        similarity = cosine_similarity(
+            embedding1.unsqueeze(0), embedding2.unsqueeze(0)
+        )[0][0]
+        return similarity
+
+
 async def generate_llm_results_bert_hint(
     source_file_path,
     bert_output,
     target_model,
     min_sequence_length=32,
     max_sequence_length=160,
+    raw_output_file_path=None,
     processed_output_file_path=None,
+    chunk_size=40,
 ):
-    wo_punt, w_bert_output, pure_tokens_gt = read_data_to_w_special_token(
+    _, w_bert_output, pure_tokens_gt = read_data_to_w_special_token(
         source_file_path,
         bert_output,
         min_sequence_length,
         max_sequence_length,
         PUNCT_SPECIAL_TOKEN,
     )
+    logger.info("random sample length: %s", len(random.choice(w_bert_output).split()))
     chat_messages_list_bert = generate_dataset(
-        chat_messages=LLM_CHAT_MESSAGES,
+        chat_messages=LLM_CHAT_MESSAGES_BERT_OUTPUT,
         input_list=w_bert_output,
         token=PUNCT_SPECIAL_TOKEN,
     )
@@ -57,76 +95,163 @@ async def generate_llm_results_bert_hint(
 
     logger.info(
         "sample output: %s",
-        chat_completion_sample.choices[0].message.content.split("\n")[0],
+        chat_completion_sample.choices[0].message.content,
     )
 
     generated_sentences = await query_server_in_chunk(
         chat_messages_list_bert,
-        model_name="meta-llama/Meta-Llama-3.1-8B-Instruct",
-        chunk_size=40,
+        model_name=target_model,
+        chunk_size=chunk_size,
     )
 
-    kept_punctuations = [ord(p) for p in set(PUNCT2LABEL.keys())]
-    removed_punctuations = [p for p in ALL_PUNCS if p not in kept_punctuations] + [
-        ord(p) for p in additional_to_remove
-    ]
-
-    processed_results = list(
-        text_lines_cleaning(
-            generated_sentences,
-            kept_punctuations,
-            removed_punctuations,
-            *[
-                partial(normalize_puncs, normalization=CROSS_LANG_PUNCT_MAPPINGS),
-                chinese_split,
-            ],
-        )
-    )
-
-    if processed_output_file_path is not None:
-        with open(processed_output_file_path, "w", encoding="utf-8") as results_file:
-            for sentence in processed_results:
+    if raw_output_file_path is not None:
+        with open(raw_output_file_path, "w", encoding="utf-8") as results_file:
+            for sentence in generated_sentences:
                 results_file.write(sentence + "\n")
+
+    processed_results = clean_up_data_from_txt(
+        generated_sentences,
+        processed_output_file_path,
+        target_punctuations=PUNCT2LABEL.keys(),
+        additional_to_keep=["'", "-"],
+        additional_to_remove=["℃", "|", "♫"],
+        special_cleaning_funcs=[
+            partial(normalize_puncs, normalization=CROSS_LANG_PUNCT_MAPPINGS),
+            chinese_split,
+            remove_brackets_text,
+        ],
+    )
 
     return processed_results, pure_tokens_gt
 
 
-def evaluate_llm_output(processed_results, pure_tokens_gt, target_model):
-    results_tokens_list = []
-    results_labels_list = []
-    for line in tqdm(processed_results):
-        result_tokens, result_labels = process_line(line, ner_mapping=PUNCT2LABEL)
-        results_tokens_list.append(result_tokens)
-        results_labels_list.append(result_labels)
+async def generate_llm_results_directly(
+    source_file_path,
+    bert_output,
+    target_model,
+    min_sequence_length=32,
+    max_sequence_length=160,
+    raw_output_file_path=None,
+    processed_output_file_path=None,
+    chunk_size=40,
+):
+    raw_input_list, _, pure_labels_gt = read_data_to_w_special_token(
+        source_file_path,
+        bert_output,
+        min_sequence_length,
+        max_sequence_length,
+        PUNCT_SPECIAL_TOKEN,
+        is_split_into_words=False,
+    )
+    chat_messages_list = generate_dataset(
+        chat_messages=LLM_CHAT_MESSAGES_RAW,
+        input_list=raw_input_list,
+        token=None,
+    )
+    logger.info("chat message sample: %s", chat_messages_list[0])
 
-    length_not_matched_index = []
-    all_gt_labels = []
-    all_result_labels = []
-    matched_gt_labels = []
-    matched_result_labels = []
-
-    for list_index, (test_label, result_labels) in enumerate(
-        zip(pure_tokens_gt, results_labels_list)
-    ):
-        gt_label_ids = [LABEL2ID[label] for label in test_label]
-        result_label_ids = [LABEL2ID[label] for label in result_labels]
-        all_gt_labels.extend(gt_label_ids)
-        all_result_labels.extend(result_label_ids)
-        if len(test_label) != len(result_labels):
-            length_not_matched_index.append(list_index)
-            if np.random.rand() < 0.002:
-                logger.info(
-                    "correct length: %s | predicted length: %s",
-                    len(test_label),
-                    len(result_labels),
-                )
-        else:
-            matched_gt_labels.extend(gt_label_ids)
-            matched_result_labels.extend(result_label_ids)
+    chat_completion_sample = await openai.chat.completions.create(
+        model=target_model, messages=chat_messages_list[0], temperature=0.1
+    )
 
     logger.info(
-        "not matched percentage: %s",
-        round(len(length_not_matched_index / len(pure_tokens_gt))),
+        "sample output: %s",
+        chat_completion_sample.choices[0].message.content,
+    )
+
+    generated_sentences = await query_server_in_chunk(
+        chat_messages_list,
+        model_name=target_model,
+        chunk_size=chunk_size,
+    )
+
+    if raw_output_file_path is not None:
+        with open(raw_output_file_path, "w", encoding="utf-8") as results_file:
+            for sentence in generated_sentences:
+                results_file.write(sentence + "\n")
+
+    processed_results = clean_up_data_from_txt(
+        generated_sentences,
+        processed_output_file_path,
+        target_punctuations=PUNCT2LABEL.keys(),
+        additional_to_keep=["'", "-"],
+        additional_to_remove=["℃", "|", "♫"],
+        special_cleaning_funcs=[
+            partial(normalize_puncs, normalization=CROSS_LANG_PUNCT_MAPPINGS),
+            chinese_split,
+            remove_brackets_text,
+        ],
+    )
+
+    return processed_results, pure_labels_gt
+
+
+def evaluate_llm_output(
+    similarity_engine: SimilarityEngine,
+    processed_results,
+    pure_tokens_gt,
+    pure_labels_gt,
+    target_model,
+):
+    really_not_matched = []
+
+    all_gt_labels = []
+    all_result_labels = []
+
+    similarity_list = []
+    for result_index, result_line in enumerate(tqdm(processed_results)):
+        result_tokens, result_labels = process_line(
+            result_line.strip("'"), ner_mapping=PUNCT2LABEL
+        )
+        gt_tokens = pure_tokens_gt[result_index]
+        gt_labels = pure_labels_gt[result_index]
+
+        gt_label_ids = [LABEL2ID[label] for label in gt_labels]
+        result_label_ids = [LABEL2ID[label] for label in result_labels]
+        if len(gt_label_ids) == len(result_label_ids):
+            all_gt_labels.extend(gt_label_ids)
+            all_result_labels.extend(result_label_ids)
+            continue
+        # is_subset, subset_indices = is_sublist_and_get_indices(gt_tokens, result_tokens)
+        # if is_subset:
+        #     result_label_ids = [
+        #         label_id
+        #         for label_index, label_id in enumerate(result_label_ids)
+        #         if label_index in subset_indices
+        #     ]
+        #     # result_label_ids = [label_id for label_id in result_label_ids if label_id >= 0]
+        #     all_gt_labels.extend(gt_label_ids)
+        #     all_result_labels.extend(result_label_ids)
+        # else:
+        first_token = gt_tokens[0]
+        try:
+            first_index_in_prediction = result_tokens.index(first_token)
+        except ValueError as ve:
+            logger.warning(str(ve))
+            really_not_matched.append(result_index)
+            simialrity_score = similarity_engine.compute_similarity(
+                result_tokens, gt_tokens
+            )
+            similarity_list.append(simialrity_score)
+            if np.random.rand() < 0.002:
+                logger.info(
+                    "original list length: %s | predicted list length: %s | similarity: %s",
+                    len(gt_tokens),
+                    len(result_tokens),
+                    simialrity_score,
+                )
+            continue
+        pred_labels = result_label_ids[
+            first_index_in_prediction : min(len(result_label_ids), len(gt_label_ids))
+        ]
+        all_result_labels.extend(pred_labels)
+
+        all_gt_labels.extend(gt_label_ids[: len(pred_labels)])
+        assert len(all_gt_labels) == len(all_result_labels)
+
+    logger.info(
+        "total not matched index: %s",
+        len(really_not_matched),
     )
 
     tested_labels = []
@@ -137,8 +262,8 @@ def evaluate_llm_output(processed_results, pure_tokens_gt, target_model):
             target_names.append(label)
 
     report_for_matched = classification_report(
-        matched_gt_labels,
-        matched_result_labels,
+        all_gt_labels,
+        all_result_labels,
         labels=tested_labels,
         digits=4,
         target_names=target_names,
@@ -149,4 +274,8 @@ def evaluate_llm_output(processed_results, pure_tokens_gt, target_model):
         "validation report for %s with bert result matched: \n %s",
         target_model,
         report_for_matched,
+    )
+    logger.info(
+        "not matched avg similarity score: %.3f",
+        sum(similarity_list) / len(similarity_list),
     )

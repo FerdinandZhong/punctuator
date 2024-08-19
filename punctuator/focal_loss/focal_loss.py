@@ -171,9 +171,11 @@ class FocalLoss(torch.nn.Module):
         focal_loss = ((1 - pt) ** self.gamma) * ce_loss
 
         if positional_importances is not None:
-            positional_importances = torch.masked_select(positional_importances, unignored_mask)
+            positional_importances = torch.masked_select(
+                positional_importances, unignored_mask
+            )
             focal_loss = focal_loss * positional_importances
-            
+
         if self.reduction == "mean":
             return focal_loss.mean()
         elif self.reduction == "sum":

@@ -13,7 +13,11 @@ corpus, gt_tags, label2id, id2label = ClassificationArguments.generate_corpus(
 )
 
 classification_args = ClassificationArguments.from_cli_args(
-    args=classification_args, corpus=corpus, gt_tags=gt_tags, label2id=label2id, id2label=id2label
+    args=classification_args,
+    corpus=corpus,
+    gt_tags=gt_tags,
+    label2id=label2id,
+    id2label=id2label,
 )
 
 classification_pipeline = ClassificationPipeline(classification_args)

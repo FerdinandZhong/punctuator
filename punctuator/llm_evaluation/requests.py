@@ -21,7 +21,7 @@ async def query_server_in_chunk(
 ):
     async def _predict(messages, model_name):
         chat_completion = await openai.chat.completions.create(
-            model=model_name, messages=messages, temperature=0.1
+            model=model_name, messages=messages, temperature=0.1, max_tokens=8192
         )
         return chat_completion.choices[0].message.content
 
@@ -38,7 +38,7 @@ async def query_server_in_chunk(
                 ]
             )
             generated_list.extend(
-                [response.split("\n")[0] for response in response_list]
+                [repr(response.replace("\n", " ")) for response in response_list]
             )
             chunk_original_sentences = []
 
@@ -49,6 +49,8 @@ async def query_server_in_chunk(
                 for current_content in chunk_original_sentences
             ]
         )
-        generated_list.extend([response.split("\n")[0] for response in response_list])
+        generated_list.extend(
+            [repr(response.replace("\n", " ")) for response in response_list]
+        )
 
     return generated_list

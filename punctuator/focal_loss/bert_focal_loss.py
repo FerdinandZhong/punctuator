@@ -312,7 +312,9 @@ class RobertaEmbeddingsStep2(nn.Module):
         self.punct_positions_embedding = nn.Embedding(
             2, config.hidden_size
         )  # num of features == 2
-        self.punct_positions_embedding.weight.data.normal_(mean=0.0, std=config.initializer_range)
+        self.punct_positions_embedding.weight.data.normal_(
+            mean=0.0, std=config.initializer_range
+        )
         self.roberta_embedding = roberta_embedding
 
     def forward(
@@ -492,7 +494,7 @@ class FocalLossForTokenClassificationStep2(BertFocalLossForTokenClassification):
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
         )
-        
+
         outputs = self.bert(
             input_ids,
             attention_mask=attention_mask,
@@ -561,7 +563,7 @@ class RobertaFocalLossForTokenClassificationStep2(
         backbone_model: BertFocalLossForTokenClassification = None,
         freeze_encoder: bool = False,
         use_kan: bool = False,
-        positonal_importance_alpha: int = 2
+        positonal_importance_alpha: int = 2,
     ):
         super().__init__(config)
         self.num_labels = config.num_labels
@@ -570,7 +572,7 @@ class RobertaFocalLossForTokenClassificationStep2(
             self.roberta = backbone_model.roberta
         else:
             self.roberta = RobertaModel(config, add_pooling_layer=False)
-        
+
         # self.roberta.embeddings = RobertaEmbeddingsStep2(config, self.roberta.embeddings)
 
         if freeze_encoder:
@@ -619,7 +621,7 @@ class RobertaFocalLossForTokenClassificationStep2(
         outputs = self.roberta(
             input_ids,
             attention_mask=attention_mask,
-            token_type_ids=None,
+            token_type_ids=token_type_ids,
             position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds,
@@ -629,75 +631,76 @@ class RobertaFocalLossForTokenClassificationStep2(
         )
 
         sequence_output = outputs[0]
-        
-        positional_importances = torch.full(
-            token_type_ids.shape,
-            float(1),
-            device=token_type_ids.device
-        )
 
-        positional_importances[token_type_ids == 1] = self._positonal_importance_alpha
+        # positional_importances = torch.full(
+        #     token_type_ids.shape, float(1), device=token_type_ids.device
+        # )
 
-        sequence_output = self.dropout(sequence_output)
-        logits = self.classifier(sequence_output)
+        # positional_importances[token_type_ids == 1] = self._positonal_importance_alpha
 
-        loss = None
-        if labels is not None:
-            loss = self._loss_fct(
-                logits.view(-1, self.num_labels), labels.view(-1), alpha=class_weights, positional_importances=positional_importances.view(-1)
-            )
+        # sequence_output = self.dropout(sequence_output)
+        # logits = self.classifier(sequence_output)
 
-        if not return_dict:
-            output = (logits,) + outputs[2:]
-            return ((mean_loss,) + output) if loss is not None else output
-
-        return TokenClassifierOutput(
-            loss=loss,
-            logits=logits,
-            hidden_states=outputs.hidden_states,
-            attentions=outputs.attentions,
-        )
-
+        # loss = None
         # if labels is not None:
-        #     labels[token_type_ids == 0] = -100
-        # else:
-        #     mean_loss = None
-
-        # # Create a tensor to store restored logits
-        # restored_logits = torch.full(
-        #     (token_type_ids.size(0), token_type_ids.size(1), self.num_labels),
-        #     float(-1),
-        #     device=token_type_ids.device,
-        # ).to(token_type_ids.device)
-
-        # # Set the first class to have the maximum probability by default (logit value of 0)
-        # restored_logits[:, :, 0] = 0
-
-        # # Loop through the batch
-        # for batch_index in range(
-        #     token_type_ids.size(0)
-        # ):  # Loop over the batch dimension
-
-        #     mask = token_type_ids[batch_index] > 0
-        #     selected_hiddenstates = sequence_output[batch_index][mask]
-        #     if selected_hiddenstates.size(0) > 0:
-        #         logits = self.classifier(selected_hiddenstates.cuda())
-        #         restored_logits[batch_index][mask] = logits
-
-        # if labels is not None:
-        #     mean_loss = self._loss_fct(
-        #         restored_logits.view(-1, self.num_labels),
+        #     loss = self._loss_fct(
+        #         logits.view(-1, self.num_labels),
         #         labels.view(-1),
-        #         class_weights,
+        #         alpha=class_weights,
+        #         positional_importances=positional_importances.view(-1),
         #     )
 
         # if not return_dict:
-        #     output = (restored_logits,) + outputs[2:]
-        #     return ((mean_loss,) + output) if mean_loss is not None else output
+        #     output = (logits,) + outputs[2:]
+        #     return ((mean_loss,) + output) if loss is not None else output
 
         # return TokenClassifierOutput(
-        #     loss=mean_loss,
-        #     logits=restored_logits,
+        #     loss=loss,
+        #     logits=logits,
         #     hidden_states=outputs.hidden_states,
         #     attentions=outputs.attentions,
         # )
+
+        if labels is not None:
+            labels[token_type_ids == 0] = -100
+        else:
+            mean_loss = None
+
+        # Create a tensor to store restored logits
+        restored_logits = torch.full(
+            (token_type_ids.size(0), token_type_ids.size(1), self.num_labels),
+            float(-1),
+            device=token_type_ids.device,
+        ).to(token_type_ids.device)
+
+        # Set the first class to have the maximum probability by default (logit value of 0)
+        restored_logits[:, :, 0] = 0
+
+        # Loop through the batch
+        for batch_index in range(
+            token_type_ids.size(0)
+        ):  # Loop over the batch dimension
+
+            mask = token_type_ids[batch_index] > 0
+            selected_hiddenstates = sequence_output[batch_index][mask]
+            if selected_hiddenstates.size(0) > 0:
+                logits = self.classifier(selected_hiddenstates.cuda())
+                restored_logits[batch_index][mask] = logits
+
+        if labels is not None:
+            mean_loss = self._loss_fct(
+                restored_logits.view(-1, self.num_labels),
+                labels.view(-1),
+                class_weights,
+            )
+
+        if not return_dict:
+            output = (restored_logits,) + outputs[2:]
+            return ((mean_loss,) + output) if mean_loss is not None else output
+
+        return TokenClassifierOutput(
+            loss=mean_loss,
+            logits=restored_logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
