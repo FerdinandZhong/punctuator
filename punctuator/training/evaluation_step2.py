@@ -395,9 +395,9 @@ class EvaluationPipeline:
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
                             if self.arguments.label_at_start:
-                                new_labels.extend([label] + [0] * (len(tokens) - 1))
+                                new_labels.extend([label] + [-100] * (len(tokens) - 1))
                             else:
-                                new_labels.extend([0] * (len(tokens) - 1) + [label])
+                                new_labels.extend([-100] * (len(tokens) - 1) + [label])
                         else:
                             new_labels.append(label)
 
@@ -431,9 +431,9 @@ class EvaluationPipeline:
                         tokens = self.tokenizer.tokenize(word)
                         if len(tokens) > 1:
                             if self.arguments.label_at_start:
-                                new_labels.extend([label] + [-100] * (len(tokens) - 1))
+                                new_labels.extend([label] + [0] * (len(tokens) - 1))
                             else:
-                                new_labels.extend([-100] * (len(tokens) - 1) + [label])
+                                new_labels.extend([0] * (len(tokens) - 1) + [label])
                         else:
                             new_labels.append(label)
                     # create an empty array of -100
