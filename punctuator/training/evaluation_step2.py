@@ -376,6 +376,18 @@ class EvaluationPipeline:
                 == np.array(total_position_labels_precision)
             ) / len(total_position_preds_precision)
             logger.info("Total precision of puncts position: %.3f", total_recall)
+        
+        positional_total_labels = [1 if label >= 1 else 0 for label in total_labels]
+        positional_total_preds = [1 if label >= 1 else 0 for label in total_preds]
+        report = classification_report(
+            positional_total_labels,
+            positional_total_preds,
+            labels=[1],
+            digits=4,
+            target_names=["PUNCT"],
+            zero_division=1,
+        )
+        logger.info("validation report: \n %s", report)
 
     def run(self):
         self.tokenize().validate()

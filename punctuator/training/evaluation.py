@@ -325,9 +325,9 @@ class EvaluationPipeline:
         report = classification_report(
             positional_total_labels,
             positional_total_preds,
-            labels=[0, 1],
+            labels=[1],
             digits=4,
-            target_names=[NORMAL_TOKEN_TAG, "PUNCT"],
+            target_names=["PUNCT"],
             zero_division=1,
         )
         logger.info("validation report: \n %s", report)

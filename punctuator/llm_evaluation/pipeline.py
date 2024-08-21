@@ -294,8 +294,8 @@ def evaluate_llm_output(
                 first_index_in_prediction = result_tokens.index(first_token)
                 break
             except ValueError as ve:
-                logger.warning(str(ve))
-                logger.warning(gt_tokens)
+                # logger.warning(str(ve))
+                # logger.warning(gt_tokens)
                 # really_not_matched.append(result_index)
                 # simialrity_score = similarity_engine.compute_similarity(
                 #     result_tokens, gt_tokens
@@ -309,16 +309,19 @@ def evaluate_llm_output(
                 #         simialrity_score,
                 #     )
                 token_index += 1
+                if token_index >= len(gt_tokens):
+                    break
                 first_token = gt_tokens[token_index]
                 continue
         if first_index_in_prediction is None:
             really_not_matched.append(result_index)
-        pred_labels = result_label_ids[
-            first_index_in_prediction : min(len(result_label_ids), len(gt_label_ids))
-        ]
-        all_result_labels.extend(pred_labels)
+        else:
+            pred_labels = result_label_ids[
+                first_index_in_prediction : min(len(result_label_ids), len(gt_label_ids))
+            ]
+            all_result_labels.extend(pred_labels)
 
-        all_gt_labels.extend(gt_label_ids[: len(pred_labels)])
+            all_gt_labels.extend(gt_label_ids[: len(pred_labels)])
         assert len(all_gt_labels) == len(all_result_labels)
 
     logger.info(
