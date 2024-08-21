@@ -43,6 +43,27 @@ LLM_CHAT_MESSAGES_RAW = [
     },
 ]
 
+LLM_CHAT_MESSAGES_FIND_POSITION = [
+    {
+        "role": "system",
+        "content": "Place {token} after each English word or Chinese character where punctuation is needed.",
+    },
+    {
+        "role": "user",
+        "content": "it involves developing skills such as listening speaking pronunciation vocabulary grammar and discourse",
+    },
+    {
+        "role": "assistant",
+        "content": "it involves developing skills such as listening{token} speaking{token} pronunciation{token} vocabulary{token} grammar{token} and discourse{token}",
+    },
+    {"role": "user", "content": "东方主义的影响非常广泛它不仅影响了西方对东方世界的看法还对艺术文学音乐电影等多个领域产生了重要影响"},
+    {
+        "role": "assistant",
+        "content": "东方主义的影响非常广泛{token}它不仅影响了西方对东方世界的看法{token}还对艺术{token}文学{token}音乐电影等多个领域产生了重要影响{token}",
+    },
+]
+
+
 PUNCT_SPECIAL_TOKEN = "#"
 
 CROSS_LANG_PUNCT_MAPPINGS = {
@@ -72,11 +93,14 @@ PUNCT2LABEL = {
     PUNCT_SPECIAL_TOKEN: NORMAL_TOKEN_TAG,
 }
 
+PUNCTSPECIAL2LABLE = {PUNCT_SPECIAL_TOKEN: "PUNCT"}
+
 LABEL2ID = {
     NORMAL_TOKEN_TAG: 0,
     "COMMA": 1,
     "PERIOD": 2,
     "QUESTIONMARK": 3,
     "EXCLAMATIONMARK": 4,
-    "PUNCT": -1,
 }
+
+PUNCTSPECIAL2ID = {NORMAL_TOKEN_TAG: 0, "PUNCT": 1}

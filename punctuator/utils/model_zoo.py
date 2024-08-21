@@ -1,6 +1,7 @@
 from collections import namedtuple
 from enum import Enum
 
+from peft import AutoPeftModelForCausalLM
 from transformers import (
     AutoConfig,
     AutoModel,
@@ -121,6 +122,10 @@ class Models(Enum):
 
     LLAMA31 = ModelCollection(
         LlamaConfig, AutoTokenizer, AutoModelForCausalLM, AutoModelForCausalLM
+    )
+
+    LLAMA31PEFT = ModelCollection(
+        LlamaConfig, AutoTokenizer, AutoPeftModelForCausalLM, AutoPeftModelForCausalLM
     )
 
     STEP2_FOCAL_LOSS = ModelCollection(

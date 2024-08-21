@@ -278,11 +278,11 @@ def process_line(line, ner_mapping):
     if len(text_list) == 0:
         return word_list, tag_list
     # clean up puncs in the beginning of the text
-    latest_word = text_list.pop(0)
+    latest_word = text_list.pop(0).lstrip("'")
     while latest_word in ner_mapping:
         if not text_list:
             break
-        latest_word = text_list.pop(0)
+        latest_word = text_list.pop(0).lstrip("'")
     latest_tag = NORMAL_TOKEN_TAG
     latest_is_punc = False
     for word in text_list:

@@ -2,13 +2,13 @@ import json
 import logging
 import warnings
 from dataclasses import dataclass, field
-from functools import partial
 
 import torch
 from datasets import load_dataset
-from peft import LoraConfig, get_peft_model
-from transformers import HfArgumentParser, Trainer, TrainingArguments
-from transformers.data import DataCollatorForSeq2Seq
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+from transformers import HfArgumentParser
+from transformers.data.data_collator import pad_without_fast_tokenizer_warning
 
 from punctuator.utils import model_type
 
@@ -56,6 +56,8 @@ class BasicArguments:
         model_path (str)
         tokenizer_name (str)
         dataset_dir (str)
+        batch_size (int)
+        max_new_tokens (int)
     """
 
     model_path: str = field(
@@ -66,7 +68,15 @@ class BasicArguments:
     tokenizer_name: str = field(
         metadata={"help": "Tokenizer name or dir"},
     )
-    dataset_dir: str = field(metadata={"help": "Dataset directory containing fields"})
+    dataset_dir: str = field(
+        metadata={"help": "Dataset directory containing fields"},
+        default="data/llm_datasets/special_token_#_new_all_lower/test.jsonl",
+    )
+    batch_size: int = field(metadata={"help": "Batch size"}, default=4)
+    output_path: str = field(
+        metadata={"help": "Output file path"},
+    )
+    max_new_tokens: int = field(metadata={"help": "max new tokens"}, default=1024)
 
     def __post_init__(self):
         for field in _VALID_DICT_FIELDS:
@@ -80,9 +90,28 @@ class BasicArguments:
                 setattr(self, field, loaded_dict)
 
 
+chat_messages = [
+    {
+        "role": "system",
+        "content": "Insert {token} after each English word or Chinese character where punctuation is required. Keep all other tokens unchanged.",
+    },
+]
+
+
+def process_inputs(sample, launched_tokenizer):
+    full_input = launched_tokenizer.apply_chat_template(
+        sample.pop("chat_messages"), tokenize=False, add_generation_prompt=True
+    )
+    tokenized_input = launched_tokenizer(full_input)
+    prompt_input_ids = tokenized_input["input_ids"]
+    sample["input_ids"] = prompt_input_ids
+    sample.pop("output")
+    return sample
+
+
 if __name__ == "__main__":
-    parser = HfArgumentParser((TrainingArguments, BasicArguments))
-    training_args, basic_args = parser.parse_args_into_dataclasses()
+    parser = HfArgumentParser((BasicArguments,))
+    basic_args = parser.parse_args_into_dataclasses()
 
     model_collection = model_type(basic_args.model_type).value
 
@@ -98,69 +127,44 @@ if __name__ == "__main__":
     model = model_collection.model.from_pretrained(
         basic_args.tokenizer_name, **basic_args.additional_model_config
     )
-    if basic_args.additional_special_tokens:
-        tokenizer.add_special_tokens(basic_args.additional_special_tokens)
-        model.resize_token_embeddings(len(tokenizer))
 
-        index_of_dot = tokenizer.convert_tokens_to_ids(".")
-        for new_token in basic_args.additional_special_tokens:
-            index_of_new = tokenizer.convert_tokens_to_ids(new_token)
-            with torch.no_grad():
-                model.model.embed_tokens.weight[
-                    index_of_new
-                ] = model.model.embed_tokens.weight[index_of_dot].clone()
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    if basic_args.use_peft:
-        with open(basic_args.peft_config, "r") as config_file:
-            peft_config_json = json.load(config_file)
-        peft_config = LoraConfig(**peft_config_json)
-        model = get_peft_model(model, peft_config)
+    if device.type == "cuda":
+        torch.cuda.set_device(device)
 
-    model.print_trainable_parameters()
-    model.to(training_args.device)
+    model.to(device)
+    model.eval()
 
     dataset = load_dataset("json", data_dir=basic_args.dataset_dir)
 
-    shifted_label_dataset = dataset.map(
-        shift_labels,
+    processed_dataset = dataset.map(
+        process_inputs,
         fn_kwargs={
             "launched_tokenizer": tokenizer,
         },
     )
 
-    data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, padding="longest")
+    data_collator = DataLoader(processed_dataset, batch_size=basic_args.batch_size)
 
-    specific_tokens_ids = []
-    for token in basic_args.specific_tokens:
-        specific_tokens_ids.append(tokenizer.convert_tokens_to_ids(token))
+    file_writer = open(basic_args.output_file_path, "w", encoding="utf-8")
 
-    print(specific_tokens_ids)
-    print(basic_args.specific_tokens)
+    with tqdm(total=len(data_collator)) as pbar:
+        for batch in data_collator:
+            padded_batch = pad_without_fast_tokenizer_warning(
+                tokenizer, batch, padding="longest"
+            )
 
-    metrics_accumulator = MetricsAccumulator()
-    if basic_args.compute_loss_in_chunk:
-        trainer_cls = CustomTrainer
-    else:
-        trainer_cls = Trainer
+            outputs = model.generate(
+                input_ids=padded_batch["input_ids"].to(device),
+                max_new_tokens=basic_args.max_new_tokens,
+            )
+            decoded_outputs = tokenizer.batch_decode(
+                outputs.detach().cpu().numpy(), skip_special_tokens=True
+            )
+            for output in decoded_outputs:
+                file_writer.write(repr(output) + "\n")
 
-    trainer = trainer_cls(
-        model=model,
-        args=training_args,
-        train_dataset=shifted_label_dataset["train"],
-        eval_dataset=shifted_label_dataset["validation"],
-        tokenizer=tokenizer,
-        compute_metrics=partial(
-            compute_metrics,
-            metrics_accumulator=metrics_accumulator,
-            specific_tokens_ids=specific_tokens_ids,
-            specific_tokens=basic_args.specific_tokens,
-            tokenizer=tokenizer,
-        ),
-        data_collator=data_collator,
-    )
-    trainer.chunk_size = basic_args.chunk_size
+            pbar.update(1)
 
-    trainer.train()
-
-    model.save_pretrained(training_args.output_dir)
-    tokenizer.save_pretrained(training_args.output_dir)
+        file_writer.close()
