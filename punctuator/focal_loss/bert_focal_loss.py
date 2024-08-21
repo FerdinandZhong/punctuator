@@ -573,11 +573,8 @@ class RobertaFocalLossForTokenClassificationStep2(
         else:
             self.roberta = RobertaModel(config, add_pooling_layer=False)
 
-        if config.type_vocab_size <= 1:
-            config.type_vocab_size = 2 
-
-            # Create a new Embeddings layer, with 2 possible segments IDs instead of 1
-            self.roberta.embeddings.token_type_embeddings = nn.Embedding(2, config.hidden_size)
+        self.roberta.embeddings.token_type_embeddings = nn.Embedding(2, config.hidden_size)
+        self.roberta.embeddings.token_type_embeddings.weight.data.normal_(mean=0.0, std=config.initializer_range)
                             
 
         # self.roberta.embeddings = RobertaEmbeddingsStep2(config, self.roberta.embeddings)
