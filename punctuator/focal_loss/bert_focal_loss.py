@@ -98,8 +98,12 @@ class RobertaFocalLossForTokenClassification(RobertaForTokenClassification):
             self.roberta = RobertaModel(config, add_pooling_layer=False)
 
         if config.type_vocab_size >= 2:
-            self.roberta.embeddings.token_type_embeddings = nn.Embedding(config.type_vocab_size, config.hidden_size)
-            self.roberta.embeddings.token_type_embeddings.weight.data.normal_(mean=0.0, std=config.initializer_range)
+            self.roberta.embeddings.token_type_embeddings = nn.Embedding(
+                config.type_vocab_size, config.hidden_size
+            )
+            self.roberta.embeddings.token_type_embeddings.weight.data.normal_(
+                mean=0.0, std=config.initializer_range
+            )
 
         classifier_dropout = (
             config.classifier_dropout
@@ -578,9 +582,12 @@ class RobertaFocalLossForTokenClassificationStep2(
         else:
             self.roberta = RobertaModel(config, add_pooling_layer=False)
 
-        self.roberta.embeddings.token_type_embeddings = nn.Embedding(2, config.hidden_size)
-        self.roberta.embeddings.token_type_embeddings.weight.data.normal_(mean=0.0, std=config.initializer_range)
-                            
+        self.roberta.embeddings.token_type_embeddings = nn.Embedding(
+            2, config.hidden_size
+        )
+        self.roberta.embeddings.token_type_embeddings.weight.data.normal_(
+            mean=0.0, std=config.initializer_range
+        )
 
         # self.roberta.embeddings = RobertaEmbeddingsStep2(config, self.roberta.embeddings)
 

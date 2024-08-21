@@ -72,10 +72,10 @@ class BasicArguments:
         metadata={"help": "Dataset directory containing fields"},
         default="data/llm_datasets/special_token_#_new_all_lower/test.jsonl",
     )
-    batch_size: int = field(metadata={"help": "Batch size"}, default=4)
     output_path: str = field(
         metadata={"help": "Output file path"},
     )
+    batch_size: int = field(metadata={"help": "Batch size"}, default=4)
     max_new_tokens: int = field(metadata={"help": "max new tokens"}, default=1024)
 
     def __post_init__(self):

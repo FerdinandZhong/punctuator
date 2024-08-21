@@ -64,6 +64,80 @@ class SimilarityEngine:
         return similarity
 
 
+class BatchSimilarityCalculator:
+    def __init__(self):
+        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        self.model = BertModel.from_pretrained("bert-base-uncased")
+
+    def get_batch_embeddings(self, token_lists):
+        # Tokenize all lists in the batch
+        inputs = self.tokenizer(
+            token_lists,
+            return_tensors="pt",
+            is_split_into_words=True,
+            padding=True,
+            truncation=True,
+        )
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        # Compute mean embeddings for each list in the batch
+        return outputs.last_hidden_state.mean(dim=1)
+
+    def compute_batch_similarity(self, batch1, batch2):
+        if len(batch1) != len(batch2):
+            raise ValueError("Both batches must have the same number of elements")
+
+        # Get embeddings for both batches
+        embeddings1 = self.get_batch_embeddings(batch1)
+        embeddings2 = self.get_batch_embeddings(batch2)
+
+        # Compute pairwise cosine similarity for each pair in the batches
+        similarities = []
+        for emb1, emb2 in zip(embeddings1, embeddings2):
+            similarity = cosine_similarity(emb1.unsqueeze(0), emb2.unsqueeze(0))[0][0]
+            similarities.append(similarity)
+
+        return similarities
+
+    def get_overall_similarity(
+        self,
+        full_llm_result,
+        full_groundtruth,
+        batch_size: int = 10,
+        ner_mapping=PUNCT2LABEL,
+    ):
+        full_llm_results_list = [
+            process_line(result_line.strip("'"), ner_mapping=ner_mapping)[0]
+            for result_line in full_llm_result
+        ]
+
+        assert len(full_groundtruth) == len(full_llm_results_list)
+        all_similarities = []
+        starting_index = 0
+        ending_index = starting_index + batch_size
+        pbar = tqdm(total=len(full_groundtruth))
+        while ending_index <= len(full_groundtruth):
+            batch_llm = full_llm_result[starting_index:ending_index]
+            batch_groundtruth = full_groundtruth[starting_index:ending_index]
+            all_similarities.extend(
+                self.compute_batch_similarity(batch_llm, batch_groundtruth)
+            )
+            starting_index = ending_index
+            ending_index += batch_size
+            pbar.update(
+                batch_size
+                if ending_index <= len(full_groundtruth)
+                else (batch_size - (ending_index - len(full_groundtruth)))
+            )
+
+        pbar.close()
+        logger.info(
+            "avg similarity score: %.3f",
+            sum(all_similarities) / len(all_similarities),
+        )
+        return all_similarities
+
+
 async def generate_llm_results_bert_hint(
     source_file_path,
     bert_output,
@@ -293,7 +367,7 @@ def evaluate_llm_output(
             try:
                 first_index_in_prediction = result_tokens.index(first_token)
                 break
-            except ValueError as ve:
+            except ValueError:
                 # logger.warning(str(ve))
                 # logger.warning(gt_tokens)
                 # really_not_matched.append(result_index)
@@ -317,7 +391,9 @@ def evaluate_llm_output(
             really_not_matched.append(result_index)
         else:
             pred_labels = result_label_ids[
-                first_index_in_prediction : min(len(result_label_ids), len(gt_label_ids))
+                first_index_in_prediction : min(
+                    len(result_label_ids), len(gt_label_ids)
+                )
             ]
             all_result_labels.extend(pred_labels)
 
