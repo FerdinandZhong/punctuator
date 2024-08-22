@@ -68,12 +68,12 @@ class BatchSimilarityCalculator:
     def __init__(self, max_length: int = 100, threshold=0.5):
         self.tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased")
         self.model = BertModel.from_pretrained("bert-base-uncased")
-        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-        if device.type == "cuda":
-            torch.cuda.set_device(device)
+        if self.device.type == "cuda":
+            torch.cuda.set_device(self.device)
 
-        self.model.to(device)
+        self.model.to(self.device)
         self.model.eval()
         self.max_length = max_length
         self.threshold = threshold
@@ -98,7 +98,7 @@ class BatchSimilarityCalculator:
             is_split_into_words=True,
             padding=True,
             truncation=False, 
-        )
+        ).to(self.device)
         with torch.no_grad():
             outputs = self.model(**inputs)
 
