@@ -6,7 +6,7 @@ import torch
 from sklearn.metrics import classification_report
 from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm
-from transformers import BertModel, BertTokenizer
+from transformers import BertModel, BertTokenizerFast
 
 from punctuator.utils import NORMAL_TOKEN_TAG, chinese_split, remove_brackets_text
 
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 class SimilarityEngine:
     def __init__(self) -> None:
-        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        self.tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased")
         self.model = BertModel.from_pretrained("bert-base-uncased")
 
     def get_sentence_embedding(self, tokens):
@@ -45,7 +45,7 @@ class SimilarityEngine:
             return_tensors="pt",
             is_split_into_words=True,
             padding=True,
-            truncation=True,
+            truncation=False,
         )
         with torch.no_grad():
             outputs = self.model(**inputs)
@@ -65,23 +65,51 @@ class SimilarityEngine:
 
 
 class BatchSimilarityCalculator:
-    def __init__(self):
-        self.tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    def __init__(self, max_length: int = 100, threshold=0.5):
+        self.tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased")
         self.model = BertModel.from_pretrained("bert-base-uncased")
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+        if device.type == "cuda":
+            torch.cuda.set_device(device)
+
+        self.model.to(device)
+        self.model.eval()
+        self.max_length = max_length
+        self.threshold = threshold
 
     def get_batch_embeddings(self, token_lists):
-        # Tokenize all lists in the batch
+        all_chunks = []
+        chunk_mappings = []
+        
+        for token_list in token_lists:
+            batch_chunk_indexes = []
+            for index_of_chunk in range(0, len(token_list), self.max_length):
+                index_in_batch = len(all_chunks)
+                chunk = token_list[index_of_chunk:index_of_chunk+self.max_length]
+                all_chunks.append(chunk)
+                batch_chunk_indexes.append(index_in_batch)
+            
+            chunk_mappings.append(batch_chunk_indexes)
+
         inputs = self.tokenizer(
-            token_lists,
+            all_chunks,
             return_tensors="pt",
             is_split_into_words=True,
             padding=True,
-            truncation=True,
+            truncation=False, 
         )
         with torch.no_grad():
             outputs = self.model(**inputs)
-        # Compute mean embeddings for each list in the batch
-        return outputs.last_hidden_state.mean(dim=1)
+
+        chunk_embeddings = outputs.last_hidden_state.mean(dim=1)
+
+        sequence_embeddings = []
+        for indexes in chunk_mappings:
+            sequence_embedding = torch.mean(chunk_embeddings[indexes], dim=0)
+            sequence_embeddings.append(sequence_embedding)
+
+        return sequence_embeddings
 
     def compute_batch_similarity(self, batch1, batch2):
         if len(batch1) != len(batch2):
@@ -93,8 +121,10 @@ class BatchSimilarityCalculator:
 
         # Compute pairwise cosine similarity for each pair in the batches
         similarities = []
-        for emb1, emb2 in zip(embeddings1, embeddings2):
+        for batch_index, (emb1, emb2) in enumerate(zip(embeddings1, embeddings2)):
             similarity = cosine_similarity(emb1.unsqueeze(0), emb2.unsqueeze(0))[0][0]
+            if similarity < self.threshold:
+                logger.info("Very low similarity! llm result: %s \n original: %s", " ".join(batch1[batch_index]), " ".join(batch2[batch_index]))
             similarities.append(similarity)
 
         return similarities
@@ -117,7 +147,7 @@ class BatchSimilarityCalculator:
         ending_index = starting_index + batch_size
         pbar = tqdm(total=len(full_groundtruth))
         while ending_index <= len(full_groundtruth):
-            batch_llm = full_llm_result[starting_index:ending_index]
+            batch_llm = full_llm_results_list[starting_index:ending_index]
             batch_groundtruth = full_groundtruth[starting_index:ending_index]
             all_similarities.extend(
                 self.compute_batch_similarity(batch_llm, batch_groundtruth)
