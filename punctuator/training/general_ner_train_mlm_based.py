@@ -366,7 +366,6 @@ class NERTrainingPipeline:
         )
 
         self.model_class = self.classifier.__class__.__name__
-        self.classifier.set_loss_fct(FocalLoss())
         logger.info("model loaded")
 
         if torch.cuda.is_available() and training_arguments.use_gpu:

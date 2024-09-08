@@ -41,7 +41,7 @@ from punctuator.rotary_bert.model import (
     RotaryBertForPreTraining,
     RotaryBertModel,
 )
-from punctuator.focal_loss.mlm_training_model import (
+from punctuator.mlm_training.mlm_training_model import (
     RobertaMLMForTokenClassification
 )
 
