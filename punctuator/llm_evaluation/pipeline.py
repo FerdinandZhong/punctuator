@@ -122,7 +122,7 @@ class BatchSimilarityCalculator:
         # Compute pairwise cosine similarity for each pair in the batches
         similarities = []
         for batch_index, (emb1, emb2) in enumerate(zip(embeddings1, embeddings2)):
-            similarity = cosine_similarity(emb1.unsqueeze(0), emb2.unsqueeze(0))[0][0]
+            similarity = cosine_similarity(emb1.unsqueeze(0).cpu(), emb2.unsqueeze(0).cpu())[0][0]
             if similarity < self.threshold:
                 logger.info("Very low similarity! llm result: %s \n original: %s", " ".join(batch1[batch_index]), " ".join(batch2[batch_index]))
             similarities.append(similarity)

@@ -22,11 +22,7 @@ warnings.filterwarnings(
 logger = logging.getLogger(__name__)
 
 
-_VALID_DICT_FIELDS = [
-    "additional_special_tokens",
-    "additional_tokenizer_config",
-    "additional_model_config",
-]
+_VALID_DICT_FIELDS = []
 
 
 def _convert_str_dict(passed_value: dict):
@@ -65,16 +61,19 @@ class BasicArguments:
             "help": "Either the remote pretrainded model name or local model dir"
         },
     )
+    model_type: str = field(metadata={"help": "Model type defined in model zoo"})
+
     tokenizer_name: str = field(
         metadata={"help": "Tokenizer name or dir"},
+    )
+    output_path: str = field(
+        metadata={"help": "Output file path"},
     )
     dataset_dir: str = field(
         metadata={"help": "Dataset directory containing fields"},
         default="data/llm_datasets/special_token_#_new_all_lower/test.jsonl",
     )
-    output_path: str = field(
-        metadata={"help": "Output file path"},
-    )
+    
     batch_size: int = field(metadata={"help": "Batch size"}, default=4)
     max_new_tokens: int = field(metadata={"help": "max new tokens"}, default=1024)
 
@@ -119,13 +118,12 @@ if __name__ == "__main__":
         basic_args.tokenizer_name,
         padding_side="left",
         truncation_side="left",
-        **basic_args.additional_tokenizer_config,
     )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     model = model_collection.model.from_pretrained(
-        basic_args.tokenizer_name, **basic_args.additional_model_config
+        basic_args.tokenizer_name,
     )
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
