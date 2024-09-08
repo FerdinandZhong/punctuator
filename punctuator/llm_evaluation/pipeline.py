@@ -15,6 +15,7 @@ from .constants import (
     LABEL2ID,
     LLM_CHAT_MESSAGES_BERT_OUTPUT,
     LLM_CHAT_MESSAGES_FIND_POSITION,
+    LLM_CHAT_MESSAGES_REPETATION,
     LLM_CHAT_MESSAGES_RAW,
     PUNCT2LABEL,
     PUNCT_SPECIAL_TOKEN,
@@ -177,6 +178,7 @@ async def generate_llm_results_bert_hint(
     raw_output_file_path=None,
     processed_output_file_path=None,
     chunk_size=40,
+    chat_messages=LLM_CHAT_MESSAGES_BERT_OUTPUT
 ):
     _, w_bert_output, pure_tokens_gt = read_data_to_w_special_token(
         source_file_path,
@@ -187,7 +189,7 @@ async def generate_llm_results_bert_hint(
     )
     logger.info("random sample length: %s", len(random.choice(w_bert_output).split()))
     chat_messages_list_bert = generate_dataset(
-        chat_messages=LLM_CHAT_MESSAGES_BERT_OUTPUT,
+        chat_messages=chat_messages,
         input_list=w_bert_output,
         token=PUNCT_SPECIAL_TOKEN,
     )
@@ -238,6 +240,7 @@ async def generate_llm_results_directly(
     raw_output_file_path=None,
     processed_output_file_path=None,
     chunk_size=40,
+    chat_messages=LLM_CHAT_MESSAGES_RAW
 ):
     raw_input_list, _, pure_labels_gt = read_data_to_w_special_token(
         source_file_path,
@@ -248,7 +251,7 @@ async def generate_llm_results_directly(
         is_split_into_words=False,
     )
     chat_messages_list = generate_dataset(
-        chat_messages=LLM_CHAT_MESSAGES_RAW,
+        chat_messages=chat_messages,
         input_list=raw_input_list,
         token=None,
     )
@@ -312,6 +315,67 @@ async def generate_llm_results_punct_positions(
         chat_messages=LLM_CHAT_MESSAGES_FIND_POSITION,
         input_list=raw_input_list,
         token=PUNCT_SPECIAL_TOKEN,
+    )
+    logger.info("chat message sample: %s", chat_messages_list[0])
+
+    chat_completion_sample = await openai.chat.completions.create(
+        model=target_model, messages=chat_messages_list[0], temperature=0.1
+    )
+
+    logger.info(
+        "sample output: %s",
+        chat_completion_sample.choices[0].message.content,
+    )
+
+    generated_sentences = await query_server_in_chunk(
+        chat_messages_list,
+        model_name=target_model,
+        chunk_size=chunk_size,
+    )
+
+    if raw_output_file_path is not None:
+        with open(raw_output_file_path, "w", encoding="utf-8") as results_file:
+            for sentence in generated_sentences:
+                results_file.write(sentence + "\n")
+
+    processed_results = clean_up_data_from_txt(
+        generated_sentences,
+        processed_output_file_path,
+        target_punctuations=PUNCT2LABEL.keys(),
+        additional_to_keep=["'", "-"],
+        additional_to_remove=["℃", "|", "♫"],
+        special_cleaning_funcs=[
+            partial(normalize_puncs, normalization=CROSS_LANG_PUNCT_MAPPINGS),
+            chinese_split,
+            remove_brackets_text,
+        ],
+    )
+
+    return processed_results, pure_labels_gt
+
+
+async def generate_llm_results_repeat_sequence(
+    source_file_path,
+    bert_output,
+    target_model,
+    min_sequence_length=32,
+    max_sequence_length=160,
+    raw_output_file_path=None,
+    processed_output_file_path=None,
+    chunk_size=40,
+):
+    raw_input_list, _, pure_labels_gt = read_data_to_w_special_token(
+        source_file_path,
+        bert_output,
+        min_sequence_length,
+        max_sequence_length,
+        PUNCT_SPECIAL_TOKEN,
+        is_split_into_words=False,
+    )
+    chat_messages_list = generate_dataset(
+        chat_messages=LLM_CHAT_MESSAGES_REPETATION,
+        input_list=raw_input_list,
+        token=None,
     )
     logger.info("chat message sample: %s", chat_messages_list[0])
 
@@ -460,3 +524,5 @@ def evaluate_llm_output(
     #     "not matched avg similarity score: %.3f",
     #     sum(similarity_list) / len(similarity_list),
     # )
+
+

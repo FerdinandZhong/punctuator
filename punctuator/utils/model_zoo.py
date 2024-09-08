@@ -41,6 +41,9 @@ from punctuator.rotary_bert.model import (
     RotaryBertForPreTraining,
     RotaryBertModel,
 )
+from punctuator.focal_loss.mlm_training_model import (
+    RobertaMLMForTokenClassification
+)
 
 ModelCollection = namedtuple(
     "ModelCollection", ["config", "tokenizer", "model", "backbone_model"]
@@ -147,4 +150,11 @@ class Models(Enum):
         RobertaTokenizerFast,
         RobertaFocalLossForTokenClassificationStep2,
         RobertaFocalLossForTokenClassification,
+    )
+
+    ROBERTA_MLM_MODEL = ModelCollection(
+        RobertaConfig,
+        RobertaTokenizerFast,
+        RobertaMLMForTokenClassification,
+        RobertaModel,
     )
