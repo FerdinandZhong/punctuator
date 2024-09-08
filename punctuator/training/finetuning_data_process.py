@@ -271,6 +271,74 @@ def read_data_after_step1(
     return texts_wo_puncts, texts_step1_output, texts_labels, texts_step1_labels
 
 
+def read_data_for_mlm(
+    source_data,
+    min_sequence_length,
+    max_sequence_length,
+    mask_special_token="<mask>",
+    is_split_into_words=True,
+) -> Union[List[List], List[List]]:
+    def read_line(text_line):
+        return text_line.strip().split("\t")
+
+    tokens_list = []
+    labels_list = []
+    line_index = 0
+
+    tokens = []
+    labels = []
+    pbar = tqdm(source_data)
+
+    for index, line in enumerate(pbar):
+        if line == "\n":
+            continue
+        processed_line = read_line(line)
+        try:
+            assert len(processed_line) == 2, "bad line"
+            token = processed_line[0].lower()
+
+            label = processed_line[1]
+            labels.append(label)
+            tokens.append(token)
+            tokens.append(mask_special_token)
+
+        except AssertionError:
+            logger.warning(f"ignore the bad line: {line}, index: {index}")
+            continue
+        line_index += 1
+        target_sequence_length = randint(min_sequence_length, max_sequence_length)
+        if len(tokens) >= target_sequence_length:
+            if not is_split_into_words:
+                tokens_list.append(
+                    chinese_combine(" ".join(tokens), [])
+                )
+            else:
+                tokens_list.append(tokens)
+            labels_list.append(labels)
+
+            tokens = []
+            labels = []
+            pbar.update(len(tokens))
+
+    try:
+        if len(tokens) > 0:
+            if not is_split_into_words:
+                tokens_list.append(
+                    chinese_combine(" ".join(tokens), [])
+                )
+            else:
+                tokens_list.append(tokens)
+            labels_list.append(labels)
+
+            labels_list.append(labels)
+            pbar.update(len(tokens))
+    except AssertionError:
+        logger.warning(f"error generating sequence: {tokens}")
+
+    pbar.close()
+
+    return tokens_list, labels_list
+
 def generate_training_data_splitting(
     source_data, min_sequence_length, max_sequence_length, split_rate=None
 ):
