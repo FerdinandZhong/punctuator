@@ -487,7 +487,7 @@ class NERTrainingPipeline:
             self.train_encodings, self.train_encoded_tags, self.train_encoded_token_types
         )
         self.val_dataset = EncodingDataset(
-            self.val_encodings, self.validation_encoded_tags, self.train_encoded_token_types
+            self.val_encodings, self.validation_encoded_tags, self.validation_encoded_token_types
         )
 
         return self
@@ -708,13 +708,12 @@ class NERTrainingPipeline:
                 input_ids = batch["input_ids"].to(self.device)
                 attention_mask = batch["attention_mask"].to(self.device)
                 labels = batch["labels"].to(self.device)
-                token_type_ids = batch["token_type_ids"].to(self.device)
+                token_type_ids = batch["token_types"].to(self.device)
 
                 outputs = self.classifier(
                     input_ids,
                     attention_mask=attention_mask,
                     labels=labels,
-                    class_weights=self.class_weights,
                     token_type_ids=token_type_ids
                 )
                 logits = outputs.logits

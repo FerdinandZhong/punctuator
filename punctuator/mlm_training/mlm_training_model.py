@@ -24,7 +24,6 @@ class RobertaMLMForTokenClassification(
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        class_weights: Optional[torch.Tensor] = None,
     ) -> Union[Tuple[torch.Tensor], TokenClassifierOutput]:
         return_dict = (
             return_dict if return_dict is not None else self.config.use_return_dict
@@ -72,7 +71,6 @@ class RobertaMLMForTokenClassification(
             loss = loss_fct(
                 restored_logits.view(-1, self.num_labels),
                 labels.view(-1),
-                class_weights,
             )
         
 
