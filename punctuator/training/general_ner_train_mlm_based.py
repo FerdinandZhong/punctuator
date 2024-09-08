@@ -81,7 +81,6 @@ class NERTrainingArguments(BaseModel):
     model_weight_name: str
     tokenizer_name: str
     model: Optional[Models] = Models.DISTILBERT
-    load_backbone_only: bool = True
 
     # training ars
     epoch: int
@@ -134,12 +133,6 @@ class NERTrainingArguments(BaseModel):
             required=True,
             default=128,
             help="Maximum sequence length (count of the words) in each sample.",
-        )
-        parser.add_argument(
-            "--load_backbone_only",
-            type=str2bool,
-            default=True,
-            help="Load the backbone model only.",
         )
         parser.add_argument(
             "--model_weight_name",
@@ -309,7 +302,6 @@ class NERTrainingArguments(BaseModel):
             training_tags=training_tags,
             validation_tags=validation_tags,
             model=model_type(args.model),
-            load_backbone_only=args.load_backbone_only,
             model_weight_name=args.model_weight_name,
             tokenizer_name=args.tokenizer_name,
             epoch=args.epoch,
@@ -367,20 +359,11 @@ class NERTrainingPipeline:
         )
         logger.info("loaded tokenizer: %s", self.tokenizer)
         logger.info("start loading model")
-        if training_arguments.load_backbone_only:
-            backbone_model = model_collection.backbone_model.from_pretrained(
-                training_arguments.model_weight_name,
-                config=self.model_config,
-            )
-            self.classifier = model_collection.model(
-                self.model_config, backbone_model=backbone_model
-            )
-
-        else:
-            self.classifier = model_collection.model.from_pretrained(
-                training_arguments.model_weight_name,
-                config=self.model_config,
-            )
+        
+        self.classifier = model_collection.model.from_pretrained(
+            training_arguments.model_weight_name,
+            config=self.model_config,
+        )
 
         self.model_class = self.classifier.__class__.__name__
         self.classifier.set_loss_fct(FocalLoss())
