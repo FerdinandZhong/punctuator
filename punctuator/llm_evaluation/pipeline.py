@@ -27,7 +27,7 @@ from .dataset_utils import (
     process_line,
     read_data_to_w_special_token,
 )
-from .requests import openai, query_server_in_chunk
+from .requests import query_server_in_chunk, default_openai_client
 
 EMAIL_TOKEN = "email"
 URL_TOKEN = "url"
@@ -173,6 +173,7 @@ async def generate_llm_results_bert_hint(
     source_file_path,
     bert_output,
     target_model,
+    openai_client=default_openai_client,
     min_sequence_length=32,
     max_sequence_length=160,
     raw_output_file_path=None,
@@ -195,7 +196,7 @@ async def generate_llm_results_bert_hint(
     )
     logger.info("chat message sample: %s", chat_messages_list_bert[0])
 
-    chat_completion_sample = await openai.chat.completions.create(
+    chat_completion_sample = await openai_client.chat.completions.create(
         model=target_model, messages=chat_messages_list_bert[0], temperature=0.1
     )
 
@@ -208,6 +209,7 @@ async def generate_llm_results_bert_hint(
         chat_messages_list_bert,
         model_name=target_model,
         chunk_size=chunk_size,
+        openai_client=openai_client
     )
 
     if raw_output_file_path is not None:
@@ -235,6 +237,7 @@ async def generate_llm_results_directly(
     source_file_path,
     bert_output,
     target_model,
+    openai_client=default_openai_client,
     min_sequence_length=32,
     max_sequence_length=160,
     raw_output_file_path=None,
@@ -257,7 +260,7 @@ async def generate_llm_results_directly(
     )
     logger.info("chat message sample: %s", chat_messages_list[0])
 
-    chat_completion_sample = await openai.chat.completions.create(
+    chat_completion_sample = await openai_client.chat.completions.create(
         model=target_model, messages=chat_messages_list[0], temperature=0.1
     )
 
@@ -270,6 +273,7 @@ async def generate_llm_results_directly(
         chat_messages_list,
         model_name=target_model,
         chunk_size=chunk_size,
+        openai_client=openai_client
     )
 
     if raw_output_file_path is not None:
@@ -297,6 +301,7 @@ async def generate_llm_results_punct_positions(
     source_file_path,
     bert_output,
     target_model,
+    openai_client=default_openai_client,
     min_sequence_length=32,
     max_sequence_length=160,
     raw_output_file_path=None,
@@ -318,7 +323,7 @@ async def generate_llm_results_punct_positions(
     )
     logger.info("chat message sample: %s", chat_messages_list[0])
 
-    chat_completion_sample = await openai.chat.completions.create(
+    chat_completion_sample = await openai_client.chat.completions.create(
         model=target_model, messages=chat_messages_list[0], temperature=0.1
     )
 
@@ -331,6 +336,7 @@ async def generate_llm_results_punct_positions(
         chat_messages_list,
         model_name=target_model,
         chunk_size=chunk_size,
+        openai_client=openai_client
     )
 
     if raw_output_file_path is not None:
@@ -358,6 +364,7 @@ async def generate_llm_results_repeat_sequence(
     source_file_path,
     bert_output,
     target_model,
+    openai_client=default_openai_client,
     min_sequence_length=32,
     max_sequence_length=160,
     raw_output_file_path=None,
@@ -379,7 +386,7 @@ async def generate_llm_results_repeat_sequence(
     )
     logger.info("chat message sample: %s", chat_messages_list[0])
 
-    chat_completion_sample = await openai.chat.completions.create(
+    chat_completion_sample = await openai_client.chat.completions.create(
         model=target_model, messages=chat_messages_list[0], temperature=0.1
     )
 
@@ -392,6 +399,7 @@ async def generate_llm_results_repeat_sequence(
         chat_messages_list,
         model_name=target_model,
         chunk_size=chunk_size,
+        openai_client=openai_client
     )
 
     if raw_output_file_path is not None:
@@ -436,6 +444,11 @@ def evaluate_llm_output(
         )
         gt_tokens = pure_tokens_gt[result_index]
         gt_labels = pure_labels_gt[result_index]
+        if result_index==0:
+            print(result_tokens)
+            print(result_labels)
+            print(gt_tokens)
+            print(gt_labels)
 
         gt_label_ids = [label2id.get(label, 1) for label in gt_labels]
         result_label_ids = [label2id.get(label, 1) for label in result_labels]
