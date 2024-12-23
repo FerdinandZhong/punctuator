@@ -21,3 +21,21 @@ python research/bert_kan_2_finetune_focal_loss.py \
 
 # 
 # --additional_model_config "{\"rotary_value\": false, \"embedding_size\": 768, \"max_position_embeddings": 42}" \
+
+
+python research/focal_loss_training.py \
+    --training_data_file_path data/newly_code_switching/training.txt \
+    --validation_data_file_path data/newly_code_switching/validation.txt \
+    --min_sequence_length 2048 --max_sequence_length 2048 \
+    --model_weight_name answerdotai/ModernBERT-large \
+    --tokenizer_name answerdotai/ModernBERT-large \
+    --model MODERNBERT_FOCAL_LOSS \
+    --batch_size 16 \
+    --model_storage_dir models/focal_loss/modernbert_focal_loss/1222 \
+    --tensorboard_log_dir runs/focal_loss/modernbert_focal_loss/1222 \
+    --label2id "{\"O\": 0, \"COMMA\": 1, \"PERIOD\": 2, \"QUESTIONMARK\": 3, \"EXCLAMATIONMARK\": 4}" \
+    --additional_model_config "{\"dropout\": 0.3, \"attention_dropout\": 0.3}" \
+    --epoch 50 \
+    --early_stop_count 10 \
+    --warm_up_steps 1000 \
+    --use_class_weight true 2>&1 | tee logs/focal_loss/modernbert_focal_loss/training_logs_1222.log

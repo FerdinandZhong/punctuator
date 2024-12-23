@@ -70,3 +70,6 @@ data/llm_results/gt_labels.txt filter=lfs diff=lfs merge=lfs -text
 data/llm_results/llama3.1_8b_with_bert_output_processed.txt filter=lfs diff=lfs merge=lfs -text
 data/llm_results/llama3.1_8b_with_roberta_output_processed.txt filter=lfs diff=lfs merge=lfs -text
 data/llm_results/llama3.1_70b_with_roberta_output_raw.txt filter=lfs diff=lfs merge=lfs -text
+logs filter=lfs diff=lfs merge=lfs -text
+logs/focal_loss/modernbert_focal_loss/eval_logs_1222.log filter=lfs diff=lfs merge=lfs -text
+logs/focal_loss/modernbert_focal_loss/training_logs_1222.log filter=lfs diff=lfs merge=lfs -text

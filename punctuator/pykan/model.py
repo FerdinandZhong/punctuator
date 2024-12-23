@@ -6,7 +6,7 @@ from fastkan import FastKAN as KAN
 from torch import nn
 from torch.nn import CrossEntropyLoss
 from transformers.modeling_outputs import TokenClassifierOutput
-from transformers.models.bert.modeling_bert import *
+from transformers.models.bert.modeling_bert import BertLayer, BertEncoder, BertPreTrainedModel, BertModel, BertEmbeddings
 
 
 class BertKanForTokenClassification(BertPreTrainedModel):

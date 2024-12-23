@@ -1,7 +1,8 @@
-torch==2.3.0
-typer==0.3.2
+torch>=2.3.0
+typer>=0.3.2
 tqdm>=4.61.2
-transformers==4.41.2
+transformers>=4.41.2
 pydantic>=2.0
 plane>=0.2.0
 chardet==5.2.0
+tensorboard==2.18.0
